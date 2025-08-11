@@ -815,8 +815,14 @@ void ppu_clock(void)
     }
 
     /* 3. Background fetch & scroll ------------------------------------- */
+    /*
+     * In addition to the visible tile fetches, the PPU performs a set of
+     * prefetch cycles at dots 321–340. The final four dots (337–340) fetch the
+     * first two tiles of the next scanline. These dummy fetches are required to
+     * mirror hardware behaviour and keep the MMC3 A12 edge timing accurate.
+     */
     if (RENDERING_ENABLED && (IS_VISIBLE_LINE || IS_PRERENDER_LINE)) {
-        if ((ppu.dot >= 1 && ppu.dot <= 256) || (ppu.dot >= 321 && ppu.dot <= 336))
+        if ((ppu.dot >= 1 && ppu.dot <= 256) || (ppu.dot >= 321 && ppu.dot <= 340))
             bg_fetch();
         if (ppu.dot == 256) inc_y();
         else if (ppu.dot == 257) copy_x_from_t();
