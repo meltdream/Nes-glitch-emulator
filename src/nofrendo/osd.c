@@ -200,13 +200,54 @@ void osd_getmouse(int *x, int *y, int *button)
 {
 }
 
-//Seemingly, this will be called only once. Should call func with a freq of frequency,
+//---------------------------------------------------------------------------
+// Timer installation
+//
+// osd_installtimer installs a periodic timer that invokes the callback
+// function at the requested frequency.  The callback is expected to update
+// |nofrendo_ticks| (typically by incrementing it) so that the rest of the
+// emulator can track the passage of time.  A non‑zero value is returned if
+// the timer could not be created.
+//
+// This implementation uses POSIX interval timers via setitimer().  The
+// callback is dispatched from a signal handler registered on SIGALRM.
+//---------------------------------------------------------------------------
+static void (*timer_callback)(void) = NULL;
+
+static void timer_handler(int signum)
+{
+    (void)signum;            /* unused */
+    if (NULL != timer_callback)
+        timer_callback();
+}
+
 int osd_installtimer(int frequency, void *func, int funcsize, void *counter, int countersize)
 {
-    printf("Timer install, freq=%d\n", frequency);
- //   timer=xTimerCreate("nes",configTICK_RATE_HZ/frequency, pdTRUE, NULL, func);
- //   xTimerStart(timer, 0);
-   return 0;
+    (void)funcsize;          /* parameters are kept for API compatibility */
+    (void)counter;
+    (void)countersize;
+
+    if (frequency <= 0 || NULL == func)
+        return -1;
+
+    timer_callback = (void (*)(void))func;
+
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = timer_handler;
+    if (sigaction(SIGALRM, &sa, NULL) < 0)
+        return -1;
+
+    struct itimerval timer;
+    memset(&timer, 0, sizeof(timer));
+    timer.it_value.tv_sec = 0;
+    timer.it_value.tv_usec = 1000000 / frequency;
+    timer.it_interval = timer.it_value;
+
+    if (setitimer(ITIMER_REAL, &timer, NULL) < 0)
+        return -1;
+
+    return 0;
 }
 
 int osd_init()
