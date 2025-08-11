@@ -366,7 +366,11 @@ void nes_poweroff(void)
  * ────────────────────────────────────────────────────────────── */
 void nes_renderframe(bool draw_flag)
 {
-   (void) draw_flag; /* rendering handled inside cycle-accurate PPU */
+   /* Tell the PPU whether the results of this frame should be drawn.  The
+    * PPU still executes all cycles so timing and game state remain accurate,
+    * but it can skip writing pixels to the framebuffer when drawing is
+    * disabled. */
+   ppu_set_draw_enabled(draw_flag);
 
    mapintf_t *mapintf = nes.mmc->intf;
    bool frame_done = false;
@@ -395,7 +399,8 @@ void nes_renderframe(bool draw_flag)
 
 static void system_video(bool draw)
 {
-   /* TODO: hack */
+   /* When draw is false we skip all video work.  The emulator core still
+    * advances a full frame but nothing is pushed to the display. */
    if (false == draw)
       return;
 

@@ -243,8 +243,14 @@ extern bitmap_t *primary_buffer; //, *back_buffer = NULL;
 uint8** nes_emulate_frame(bool draw_flag)
 {
     nes_renderframe(draw_flag);
-    vid_flush();
-    osd_getinput();
+
+    /* Only push the rendered frame to the display and poll input when
+     * drawing is requested.  When draw_flag is false the emulation still
+     * advances internally but no visible frame is produced. */
+    if (draw_flag) {
+        vid_flush();
+        osd_getinput();
+    }
     if (primary_buffer)
         return primary_buffer->line;
     return NULL;
