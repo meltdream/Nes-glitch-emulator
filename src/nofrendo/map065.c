@@ -25,6 +25,7 @@
 
 #include "noftypes.h"
 #include "nes_mmc.h"
+#include "nes.h"
 #include "new_ppu.h"
 
 static struct
@@ -43,7 +44,17 @@ static void map65_init(void)
    irq.cycles = 0;
 }
 
-/* TODO: shouldn't there be some kind of HBlank callback??? */
+static void map65_hblank(int vblank)
+{
+   if (vblank)
+      return;
+
+   if (irq.enabled && ppu_enabled())
+   {
+      if (irq.counter > 0 && 0 == --irq.counter)
+         nes_irq();
+   }
+}
 
 /* mapper 65: Irem H-3001*/
 static void map65_write(uint32 address, uint8 value)
@@ -104,7 +115,7 @@ mapintf_t map65_intf =
    "Irem H-3001", /* mapper name */
    map65_init, /* init routine */
    NULL, /* vblank callback */
-   NULL, /* hblank callback */
+   map65_hblank, /* hblank callback */
    NULL, /* get state (snss) */
    NULL, /* set state (snss) */
    NULL, /* memory read structure */
