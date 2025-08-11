@@ -214,6 +214,10 @@ static struct {
     bool odd_frame;
     bool frame_complete;
 
+    /* NMI timing */
+    bool nmi_prev;
+    uint8_t nmi_delay;
+
     /* OAM */
     uint8_t  oam[256];
     uint8_t  sec_oam[32];
@@ -705,8 +709,19 @@ ALWAYS_INLINE uint8_t sprite_pixel(uint8_t *pal_row_out, uint8_t *prio_out)
 /* ─────────────────── NMI helper ─────────────────── */
 ALWAYS_INLINE void nmi_check(void)
 {
-    if ((ppu.ctrl & PPU_CTRL0F_NMI) && (ppu.status & PPU_STATF_VBLANK))
-        nes_nmi();
+    bool nmi = (ppu.ctrl & PPU_CTRL0F_NMI) && (ppu.status & PPU_STATF_VBLANK);
+    if (nmi && !ppu.nmi_prev)
+        ppu.nmi_delay = ppu_is_pal ? 7 : 6; /* two CPU cycles */
+    ppu.nmi_prev = nmi;
+}
+
+ALWAYS_INLINE void nmi_step(void)
+{
+    if (ppu.nmi_delay > 0) {
+        --ppu.nmi_delay;
+        if (ppu.nmi_delay == 0 && (ppu.ctrl & PPU_CTRL0F_NMI) && (ppu.status & PPU_STATF_VBLANK))
+            nes_nmi();
+    }
 }
 
 /* ─────────────────── Public API ─────────────────── */
@@ -740,6 +755,9 @@ void ppu_reset(int hard)
     ppu.oam_write_during_eval = false;
     ppu.sprite0_slot_next = 0xFF;
     ppu.sprite0_slot_this = 0xFF;
+
+    ppu.nmi_prev = false;
+    ppu.nmi_delay = 0;
     
     a12_prev = false;
     mmc3_a12_level = false;
@@ -767,7 +785,8 @@ void ppu_mmc3_m2_tick(int cycles) {
 }
 void ppu_clock(void)
 {
-    
+    nmi_step();
+
     if (ppu.dot == 0) {
         ppu.sprite_zero_this  = ppu.sprite_zero_next;
         ppu.sprite0_slot_this = ppu.sprite0_slot_next;
@@ -882,8 +901,10 @@ void ppu_clock(void)
         ppu.status |= PPU_STATF_VBLANK;
         nmi_check();
     }
-    if (IS_PRERENDER_LINE && ppu.dot == 1)
+    if (IS_PRERENDER_LINE && ppu.dot == 1) {
         ppu.status &= ~(PPU_STATF_VBLANK | PPU_STATF_STRIKE | PPU_STATF_MAXSPRITE);
+        nmi_check();
+    }
 
     /* 6. Odd frame cycle skip ------------------------------------------ */
     /* On odd frames with rendering enabled, dot 339 is skipped (going directly to 341)
@@ -910,6 +931,7 @@ uint8_t ppu_read(uint32_t addr)
     case 2: /* PPUSTATUS */
         ret = (ppu.status & 0xE0) | (ppu.open_bus & 0x1F);
         ppu.status &= ~PPU_STATF_VBLANK;
+        nmi_check();
         ppu.w = 0;
         ppu.open_bus = ret;
         break;
