@@ -27,6 +27,7 @@
 #include "noftypes.h"
 #include "nes_mmc.h"
 #include "new_ppu.h"
+#include "wram.h"
 
 /* TODO: WRAM enable ala Mark Knibbs:
    ==================================
@@ -55,6 +56,35 @@ static uint8 latch = 0;
 static uint8 regs[4];
 static int bank_select;
 static uint8 lastreg;
+static int chr_page; /* 0 = $0000-$0FFF, 1 = $1000-$1FFF */
+
+/* Update WRAM enable state based on current CHR page */
+static void map1_update_wram(void)
+{
+   uint8 reg = regs[1];
+
+   if (regs[0] & 0x10)
+      reg = chr_page ? regs[2] : regs[1];
+
+   nes_set_wram_enable((reg & 0x10) == 0);
+}
+
+static void map1_ppu_hook(uint16_t addr)
+{
+   if (!(regs[0] & 0x10))
+      return; /* 8 KB mode ignores A12 */
+
+   chr_page = (addr & 0x1000) ? 1 : 0;
+   map1_update_wram();
+}
+
+static void map1_hblank(int vblank)
+{
+   UNUSED(vblank);
+
+   chr_page = 0;
+   map1_update_wram();
+}
 
 static void map1_write(uint32 address, uint8 value)
 {
@@ -108,14 +138,22 @@ static void map1_write(uint32 address, uint8 value)
 
    case 1:
       if (regs[0] & 0x10)
-         mmc_bankvrom(4, 0x0000, value);
+      {
+         int bank = value & (mmc_getinfo()->vrom_banks ? 0x1F : 0x0F);
+         mmc_bankvrom(4, 0x0000, bank);
+      }
       else
+      {
          mmc_bankvrom(8, 0x0000, value >> 1);
+      }
       break;
 
    case 2:
       if (regs[0] & 0x10)
-         mmc_bankvrom(4, 0x1000, value);
+      {
+         int bank = value & (mmc_getinfo()->vrom_banks ? 0x1F : 0x0F);
+         mmc_bankvrom(4, 0x1000, bank);
+      }
       break;
 
    case 3:
@@ -145,6 +183,8 @@ static void map1_write(uint32 address, uint8 value)
    default:
       break;
    }
+
+   map1_update_wram();
 }
 
 static void map1_init(void)
@@ -154,10 +194,14 @@ static void map1_init(void)
 
    memset(regs, 0, sizeof(regs));
 
+   chr_page = 0;
+   ppu_set_mapper_hook(map1_ppu_hook);
+
    if (mmc_getinfo()->rom_banks == 0x20)
       mmc_bankrom(16, 0xC000, 0x0F);
 
    map1_write(0x8000, 0x80);
+   map1_update_wram();
 }
 
 static void map1_getstate(SnssMapperBlock *state)
@@ -179,6 +223,7 @@ static void map1_setstate(SnssMapperBlock *state)
    regs[3] = state->extraData.mapper1.registers[3];
    latch = state->extraData.mapper1.latch;
    bitcount = state->extraData.mapper1.numberOfBits;
+   map1_update_wram();
 }
 
 static map_memwrite map1_memwrite[] =
@@ -193,7 +238,7 @@ mapintf_t map1_intf =
    "MMC1", /* mapper name */
    map1_init, /* init routine */
    NULL, /* vblank callback */
-   NULL, /* hblank callback */
+   map1_hblank, /* hblank callback */
    map1_getstate, /* get state (snss) */
    map1_setstate, /* set state (snss) */
    NULL, /* memory read structure */
