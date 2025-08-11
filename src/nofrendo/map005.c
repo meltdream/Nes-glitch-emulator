@@ -126,12 +126,14 @@ static void sync_chr(void)
         mmc_bankvrom(2, 0x1800, chr_bg[3]);
         break;
 
-    case 3: /* eight 1 KiB banks */
+    case 3: /* eight 1 KiB banks: $5120-$5127 */
     default:
+        /* lower half comes from registers $5120-$5123 */
         for (int i = 0; i < 4; i++)
             mmc_bankvrom(1, i * 0x400, chr_spr[i]);
+        /* upper half comes from registers $5124-$5127 */
         for (int i = 0; i < 4; i++)
-            mmc_bankvrom(1, 0x1000 + i * 0x400, chr_bg[i]);
+            mmc_bankvrom(1, 0x1000 + i * 0x400, chr_spr[4 + i]);
         break;
     }
 }
