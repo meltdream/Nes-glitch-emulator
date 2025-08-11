@@ -319,18 +319,8 @@ static void load_mapperblock(nes_t *state, SNSS_FILE *snssFile)
    for (i = 0; i < 4; i++)
       mmc_bankrom(8, 0x8000 + (i * 0x2000), snssFile->mapperBlock.prgPages[i]);
 
-   if (state->rominfo->vrom_banks)
-   {
-      for (i = 0; i < 8; i++)
-         mmc_bankvrom(1, i * 0x400, snssFile->mapperBlock.chrPages[i]);
-   }
-   else
-   {
-      ASSERT(state->rominfo->vram);
-
-      for (i = 0; i < 8; i++)
-         ppu_setpage(1, i, state->rominfo->vram);
-   }
+   for (i = 0; i < 8; i++)
+      mmc_bankvrom(1, i * 0x400, snssFile->mapperBlock.chrPages[i]);
 
    if (state->mmc->intf->set_state)
       state->mmc->intf->set_state(&snssFile->mapperBlock);

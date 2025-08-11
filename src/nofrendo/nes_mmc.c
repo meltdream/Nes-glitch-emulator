@@ -70,40 +70,35 @@ void mmc_getcontext(mmc_t *dest_mmc)
    *dest_mmc = mmc;
 }
 
-/* VROM bankswitching */
+/* VROM/VRAM bankswitching */
 void mmc_bankvrom(int size, uint32 address, int bank)
 {
-   if (0 == mmc.cart->vrom_banks)
+   uint8 *base;
+   int total_1k;
+
+   if (mmc.cart->vrom_banks)
+   {
+      base = mmc.cart->vrom;
+      total_1k = mmc.cart->vrom_banks * 8;
+   }
+   else
+   {
+      base = mmc.cart->vram;
+      total_1k = mmc.cart->vram_banks * 8;
+   }
+
+   if (NULL == base || 0 == total_1k)
       return;
 
-   switch (size)
    {
-   case 1:
-      if (bank == MMC_LASTBANK)
-         bank = MMC_LAST1KVROM;
-      ppu_setpage(1, address >> 10, &mmc.cart->vrom[(bank % MMC_1KVROM) << 10]);
-      break;
+      int page = address >> 10;
+      int bank_count = total_1k / size;
 
-   case 2:
       if (bank == MMC_LASTBANK)
-         bank = MMC_LAST2KVROM;
-      ppu_setpage(2, address >> 10, &mmc.cart->vrom[(bank % MMC_2KVROM) << 11]);
-      break;
+         bank = bank_count - 1;
 
-   case 4:
-      if (bank == MMC_LASTBANK)
-         bank = MMC_LAST4KVROM;
-      ppu_setpage(4, address >> 10, &mmc.cart->vrom[(bank % MMC_4KVROM) << 12]);
-      break;
-
-   case 8:
-      if (bank == MMC_LASTBANK)
-         bank = MMC_LAST8KVROM;
-      ppu_setpage(8, 0, &mmc.cart->vrom[(bank % MMC_8KVROM) << 13]);
-      break;
-
-   default:
-      log_printf("invalid VROM bank size %d\n", size);
+      bank %= bank_count;
+      ppu_setpage(size, page, &base[(bank * size) << 10]);
    }
 }
 
@@ -193,14 +188,20 @@ static void mmc_setpages(void)
          ppu_mirror(0, 0, 1, 1);
    }
 
-   /* if we have no VROM, switch in VRAM */
-   /* TODO: fix this hack implementation */
+   /* if we have no VROM, switch in VRAM with 1 KB granularity */
    if (0 == mmc.cart->vrom_banks)
    {
       ASSERT(mmc.cart->vram);
 
-      ppu_setpage(8, 0, mmc.cart->vram);
-      ppu_mirrorhipages();
+      for (int i = 0; i < 8; i++)
+         ppu_setpage(1, i, mmc.cart->vram + (i << 10));
+
+      if (mmc.cart->flags & ROM_FLAG_FOURSCREEN)
+         ppu_mirror(0, 1, 2, 3);
+      else if (MIRROR_VERT == mmc.cart->mirror)
+         ppu_mirror(0, 1, 0, 1);
+      else
+         ppu_mirror(0, 0, 1, 1);
    }
 }
 
