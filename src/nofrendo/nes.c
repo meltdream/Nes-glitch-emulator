@@ -408,7 +408,7 @@ void nes_renderframe(bool draw_flag)
 
 static void system_video(bool draw)
 {
-   /* When draw is false we skip all video work.  The emulator core still
+   /* When draw is false we skip all video work. The emulator core still
     * advances a full frame but nothing is pushed to the display. */
    if (false == draw)
       return;
@@ -418,9 +418,6 @@ static void system_video(bool draw)
 
    /* blit to screen */
    vid_flush();
-
-   /* grab input */
-   osd_getinput();
 }
 
 /* main emulation loop */
@@ -436,6 +433,9 @@ void nes_emulate(void)
 
    while (false == nes.poweroff)
    {
+      /* Poll input once per iteration regardless of rendering state */
+      osd_getinput();
+
       int current_ticks = nofrendo_ticks;
       if (current_ticks != last_ticks)
       {
