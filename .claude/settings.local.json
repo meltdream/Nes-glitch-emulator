@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:nesdev.org)",
+      "WebFetch(domain:www.nesdev.org)",
+      "WebFetch(domain:www.nesdev.org)",
+      "Bash(ls)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}
