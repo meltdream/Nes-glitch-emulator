@@ -351,7 +351,7 @@ ALWAYS_INLINE void pal_write_raw(uint16_t addr, uint8_t v)
 
 /* ─────────────────── CHR bus accessors ─────────────────── */
 /* Legacy memory mapping compatibility - translates to MMC interface calls */
-static uint8_t *chr_page_ptrs[16]; /* Track page pointers for compatibility */
+static uint8_t *chr_page_ptrs[16]; /* Track page pointers for 16 1 KiB pages */
 static uint8_t *chrram_ptr = NULL; /* Base pointer to CHR RAM */
 static size_t   chrram_size = 0;   /* Size of CHR RAM in bytes */
 
@@ -1146,15 +1146,13 @@ uint8_t *ppu_getpage(int page)
 }
 
 /* Single source of truth for CHR mapping - sets up the page table used by chr_read */
-void ppu_setpage(int size, int page, uint8_t *ptr) 
-{ 
-    if (page >= 8) {
-        /* Nametable space mapping - not solving CIRAM-as-CHR here */
+void ppu_setpage(int size, int page, uint8_t *ptr)
+{
+    if (page >= 16)
         return;
-    }
-    
-    /* CHR space mapping: For page < 8, set chr_page_ptrs[page+i] = ptr + i*0x400 */
-    for (int i = 0; i < size && (page + i) < 8; i++) {
+
+    /* CHR/NT mapping: For page < 16, set chr_page_ptrs[page+i] = ptr + i*0x400 */
+    for (int i = 0; i < size && (page + i) < 16; i++) {
         chr_page_ptrs[page + i] = ptr ? ptr + (i * 0x400) : NULL;
     }
 }
