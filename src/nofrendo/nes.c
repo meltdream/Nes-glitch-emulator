@@ -572,7 +572,7 @@ void nes_destroy(nes_t **machine)
          free((*machine)->cpu);
 
       if ((*machine)->rominfo)
-         rom_freeinfo((*machine)->rominfo);
+         rom_freeinfo((*machine)->rominfo, (*machine)->ppu);
 
       memset(*machine, 0, sizeof(nes_t));
       *machine = NULL;
@@ -585,7 +585,7 @@ int nes_insertcart(const char *filename, nes_t *machine)
    nes_t *nes_ptr = machine ? machine : &nes;
 
    if (NULL != nes_ptr->rominfo)
-      rom_freeinfo(nes_ptr->rominfo);
+      rom_freeinfo(nes_ptr->rominfo, nes_ptr->ppu);
 
    if (NULL == (nes_ptr->rominfo = rom_load(filename)))
       return NESERR_BAD_FILE;

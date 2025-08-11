@@ -171,6 +171,15 @@ static void mmc_setpages(void)
 {
    log_printf("setting up mapper %d\n", mmc.intf->number);
 
+   /* Provide CHR-RAM pointer to the PPU */
+   if (mmc.cart->vram) {
+      ppu_set_chrram(mmc.cart->vram, VRAM_8K * mmc.cart->vram_banks);
+   } else {
+      ppu_set_chrram(NULL, 0);
+   }
+
+   ppu_set_four_screen_mode((mmc.cart->flags & ROM_FLAG_FOURSCREEN) != 0);
+
    /* Switch ROM into CPU space, set VROM/VRAM (done for ALL ROMs) */
    mmc_bankrom(16, 0x8000, 0);
    mmc_bankrom(16, 0xC000, MMC_LASTBANK);
