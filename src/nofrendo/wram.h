@@ -5,6 +5,7 @@
 #define WRAM_H
 
 #include <stdint.h>     /* for uint32_t / uint8_t */
+#include <stdbool.h>
 
 /* opaque forward-decl: comes from nes.h */
 struct nes_s;
@@ -14,5 +15,8 @@ void wram_init(struct nes_s *nes);
 
 /*  Only mapper 004 (MMC3 / MMC6) needs this call:                    */
 void mmc_bankwram(int size, uint32_t addr, uint8_t bank);
+
+void nes_set_wram_enable(bool enable);
+void nes_set_wram_write_protect(bool protect);
 
 #endif /* WRAM_H */

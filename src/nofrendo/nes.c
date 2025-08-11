@@ -147,28 +147,36 @@ static void build_address_handlers(nes_t *machine)
       /* MMC not set up yet - only set up default handlers */
       
       /* Set up default read handlers with bounds checking */
-      for (count = 0; count < sizeof(default_readhandler)/sizeof(default_readhandler[0]) && num_handlers < MAX_MEM_HANDLERS; count++) {
+      for (count = 0; count < sizeof(default_readhandler)/sizeof(default_readhandler[0]) && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
          if (NULL == default_readhandler[count].read_func)
             break;
          machine->readhandler[num_handlers] = default_readhandler[count];
          num_handlers++;
       }
-      
+      /* Write explicit terminator */
+      machine->readhandler[num_handlers].min_range = 0xFFFFFFFF;
+      machine->readhandler[num_handlers].max_range = 0xFFFFFFFF;
+      machine->readhandler[num_handlers].read_func = NULL;
+
       /* Set up default write handlers with bounds checking */
       num_handlers = 0;
-      for (count = 0; count < sizeof(default_writehandler)/sizeof(default_writehandler[0]) && num_handlers < MAX_MEM_HANDLERS; count++) {
+      for (count = 0; count < sizeof(default_writehandler)/sizeof(default_writehandler[0]) && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
          if (NULL == default_writehandler[count].write_func)
             break;
          machine->writehandler[num_handlers] = default_writehandler[count];
          num_handlers++;
       }
+      /* Write explicit terminator */
+      machine->writehandler[num_handlers].min_range = 0xFFFFFFFF;
+      machine->writehandler[num_handlers].max_range = 0xFFFFFFFF;
+      machine->writehandler[num_handlers].write_func = NULL;
       return;
    }
    
    intf = machine->mmc->intf;
 
    /* Set up default read handlers first */
-   for (count = 0; count < sizeof(default_readhandler)/sizeof(default_readhandler[0]) && num_handlers < MAX_MEM_HANDLERS; count++) {
+   for (count = 0; count < sizeof(default_readhandler)/sizeof(default_readhandler[0]) && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
       if (NULL == default_readhandler[count].read_func)
          break;
       machine->readhandler[num_handlers] = default_readhandler[count];
@@ -176,20 +184,22 @@ static void build_address_handlers(nes_t *machine)
    }
 
    /* Add MMC-specific read handlers - with safe bounds checking */
-   for (count = 0; count < MAX_MEM_HANDLERS && num_handlers < MAX_MEM_HANDLERS; count++) {
+   for (count = 0; count < MAX_MEM_HANDLERS && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
       if (NULL == intf->mem_read[count].read_func)
-         break;
-      if (num_handlers >= MAX_MEM_HANDLERS)
          break;
       machine->readhandler[num_handlers].min_range = intf->mem_read[count].min_range;
       machine->readhandler[num_handlers].max_range = intf->mem_read[count].max_range;
       machine->readhandler[num_handlers].read_func = intf->mem_read[count].read_func;
       num_handlers++;
    }
+   /* Terminator */
+   machine->readhandler[num_handlers].min_range = 0xFFFFFFFF;
+   machine->readhandler[num_handlers].max_range = 0xFFFFFFFF;
+   machine->readhandler[num_handlers].read_func = NULL;
 
    /* Set up default write handlers */
    num_handlers = 0;
-   for (count = 0; count < sizeof(default_writehandler)/sizeof(default_writehandler[0]) && num_handlers < MAX_MEM_HANDLERS; count++) {
+   for (count = 0; count < sizeof(default_writehandler)/sizeof(default_writehandler[0]) && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
       if (NULL == default_writehandler[count].write_func)
          break;
       machine->writehandler[num_handlers] = default_writehandler[count];
@@ -197,16 +207,18 @@ static void build_address_handlers(nes_t *machine)
    }
 
    /* Add MMC-specific write handlers - with safe bounds checking */
-   for (count = 0; count < MAX_MEM_HANDLERS && num_handlers < MAX_MEM_HANDLERS; count++) {
+   for (count = 0; count < MAX_MEM_HANDLERS && num_handlers < MAX_MEM_HANDLERS - 1; count++) {
       if (NULL == intf->mem_write[count].write_func)
-         break;
-      if (num_handlers >= MAX_MEM_HANDLERS)
          break;
       machine->writehandler[num_handlers].min_range = intf->mem_write[count].min_range;
       machine->writehandler[num_handlers].max_range = intf->mem_write[count].max_range;
       machine->writehandler[num_handlers].write_func = intf->mem_write[count].write_func;
       num_handlers++;
    }
+   /* Terminator */
+   machine->writehandler[num_handlers].min_range = 0xFFFFFFFF;
+   machine->writehandler[num_handlers].max_range = 0xFFFFFFFF;
+   machine->writehandler[num_handlers].write_func = NULL;
 }
 
 static uint8 ram_read(uint32 address)
@@ -263,14 +275,16 @@ static uint8 io_read(uint32 address)
    uint8 ret = 0x40; /* open-bus high bits approximated; D6 often reads as open bus */
    int  port = (address == 0x4017) ? 1 : 0;
 
-   /* Read one bit (A first) when strobe low; if strobe high, keep returning A */
-   uint8 bit = joy_shift[port] & 1;
-   ret |= bit;
-
-   if (!joy_strobe) {
+   uint8 bit;
+   if (joy_strobe) {
+      /* Real-time A button while strobe high */
+      bit = joy_state[port] & 1;
+   } else {
+      bit = joy_shift[port] & 1;
       /* shift only when not strobing */
       joy_shift[port] = (joy_shift[port] >> 1) | 0x80; /* after 8 reads, returns 1s */
    }
+   ret |= bit;
    return ret;
 }
 
