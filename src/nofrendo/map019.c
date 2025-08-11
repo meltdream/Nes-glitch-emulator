@@ -26,8 +26,11 @@
 #include "noftypes.h"
 #include "nes_mmc.h"
 #include "new_ppu.h"
+#include "nes.h"
 
-/* TODO: shouldn't there be an h-blank IRQ handler??? */
+/* IRQ handling for Namcot 106 relies on a simple scanline counter. Each
+** H-blank, the counter is decremented and an IRQ is generated once it
+** reaches zero. */
 
 /* Special mirroring macro for mapper 19 */
 #define N_BANK1(table, value) \
@@ -47,6 +50,20 @@ static struct
 static void map19_init(void)
 {
    irq.counter = irq.enabled = 0;
+}
+
+static void map19_hblank(int vblank)
+{
+   UNUSED(vblank);
+
+   if (irq.enabled && irq.counter)
+   {
+      if (0 == --irq.counter)
+      {
+         nes_irq();
+         irq.enabled = false;
+      }
+   }
 }
 
 /* mapper 19: Namcot 106 */
@@ -127,7 +144,7 @@ mapintf_t map19_intf =
    "Namcot 106", /* mapper name */
    map19_init, /* init routine */
    NULL, /* vblank callback */
-   NULL, /* hblank callback */
+   map19_hblank, /* hblank callback */
    map19_getstate, /* get state (snss) */
    map19_setstate, /* set state (snss) */
    NULL, /* memory read structure */
