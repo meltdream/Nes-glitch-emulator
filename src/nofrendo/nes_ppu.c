@@ -232,7 +232,7 @@ static struct {
     
     /* Sprite evaluation state (for cycle-accurate evaluation) */
     uint8_t    eval_sprite_idx;  /* Current sprite being evaluated (0-63) */
-    uint8_t    eval_oam_addr;    /* Current byte address in primary OAM (0-255) */
+    uint16_t   eval_oam_addr;    /* Current byte address in primary OAM (0-255) */
     uint8_t    eval_sec_idx;     /* Current secondary OAM index (0-31) */
     bool       eval_overflow;    /* Sprite overflow detected */
     uint8_t    eval_temp_y;      /* Temporary Y value read on even cycles */
@@ -509,10 +509,17 @@ ALWAYS_INLINE void bg_fetch(void)
 static void eval_sprite_read_primary(void)
 {
     if (ppu.eval_oam_addr > 255) return; /* All sprites processed */
-    
+
+    /* If $2004 was written mid-eval, emulate the PPU's bus corruption */
+    if (ppu.oam_write_during_eval) {
+        ppu.eval_read_latch = 0xFF;      /* typical open-bus value */
+        ppu.sprite_in_range = false;     /* treat as out-of-range */
+        return;
+    }
+
     /* Read one byte from primary OAM on odd cycle */
     ppu.eval_read_latch = ppu.oam[ppu.eval_oam_addr];
-    
+
     /* If reading Y byte (byte_index == 0), compute sprite_in_range */
     if (ppu.eval_byte_index == 0) {
         uint16_t cur_line = ppu.scanline + 1;
@@ -526,11 +533,15 @@ static void eval_sprite_read_primary(void)
 static void eval_sprite_write_secondary(void)
 {
     if (ppu.eval_oam_addr > 255) return; /* All sprites processed */
-    
+
+    /* Abort evaluation entirely if a write occurred during evaluation */
+    if (ppu.oam_write_during_eval)
+        return;
+
     /* Write one byte to secondary OAM on even cycle if in range */
     if (ppu.sprite_in_range && ppu.eval_sec_idx < 32) {
         ppu.sec_oam[ppu.eval_sec_idx++] = ppu.eval_read_latch;
-        
+
         /* If writing Y byte (byte_index == 0) and this is sprite 0 */
         if (ppu.eval_byte_index == 0 && ppu.eval_sprite_idx == 0) {
             ppu.sprite_zero_next  = true;
@@ -541,7 +552,7 @@ static void eval_sprite_write_secondary(void)
         if (ppu.sprite_in_range && !ppu.eval_overflow) {
             ppu.eval_overflow = true;
         }
-        
+
         /* Continue reading but don't write */
         /* Hardware bug: increment by +5 when starting new sprite while full */
         if (ppu.eval_byte_index == 0) {
@@ -554,7 +565,7 @@ static void eval_sprite_write_secondary(void)
             return;
         }
     }
-    
+
     /* Increment by 1 byte and advance byte index */
     ppu.eval_oam_addr = (ppu.eval_oam_addr + 1) & 0xFF;
     ppu.eval_byte_index = (ppu.eval_byte_index + 1) & 3;
@@ -841,7 +852,6 @@ void ppu_clock(void)
         ppu.sprite0_slot_next = 0xFF;
         ppu.eval_byte_index = 0;
         ppu.eval_read_latch = 0;
-        ppu.oam_write_during_eval = false;
     }
 
     /* Sprite evaluation with proper even/odd cycle behavior during 65-256 */
@@ -863,6 +873,7 @@ void ppu_clock(void)
 
     if (ppu.dot == 257) {
         ppu.oam_addr = 0; /* hardware forces this */
+        ppu.oam_write_during_eval = false; /* clear after eval window */
         
         /* Set overflow flag based on evaluation results */
         if (ppu.eval_overflow) ppu.status |= PPU_STATF_MAXSPRITE; 
@@ -951,7 +962,8 @@ void ppu_write(uint32_t addr, uint8_t value)
     case 4: /* OAMDATA */
         ppu.oam[ppu.oam_addr++] = value;
         /* Check for write during sprite evaluation */
-        if (RENDERING_ENABLED && IS_VISIBLE_LINE && ppu.dot >= 65 && ppu.dot <= 256) {
+        if (RENDERING_ENABLED && (IS_VISIBLE_LINE || IS_PRERENDER_LINE) &&
+            ppu.dot >= 65 && ppu.dot <= 256) {
             ppu.oam_write_during_eval = true;
         }
         break;

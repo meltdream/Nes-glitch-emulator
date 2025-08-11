@@ -141,9 +141,9 @@ typedef struct {
     bool odd_frame;
     
     /* Sprite evaluation state */
-    uint8_t eval_sprite_idx;
-    uint8_t eval_oam_addr;
-    uint8_t eval_sec_idx;
+    uint8_t  eval_sprite_idx;
+    uint16_t eval_oam_addr;
+    uint8_t  eval_sec_idx;
     bool eval_overflow;
     uint8_t eval_temp_y;
     bool sprite_in_range;
