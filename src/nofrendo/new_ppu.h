@@ -11,6 +11,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "bitmap.h"
 #include "noftypes.h"
@@ -83,6 +84,7 @@ typedef struct ppu_s ppu_t;
 void ppu_set_mapper_hook(void (*fn)(uint16_t addr));
 void ppu_setlatchfunc(ppulatchfunc_t fn);      /* MMC-2 / MMC-4 latch */
 void ppu_setvromswitch(ppuvromswitch_t fn);    /* VS-System CHR bank  */
+void ppu_set_chrram(uint8_t *ptr, size_t size);/* Cartridge CHR RAM   */
 
 /* ---- Core lifecycle ----------------------------------------------------- */
 void ppu_reset(int hard);   /* hard ≠ 0 → power-on state */

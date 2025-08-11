@@ -479,12 +479,12 @@ rominfo_t *rom_load(const char *filename)
    return rominfo;
 
 _fail:
-   rom_free(&rominfo);
+   rom_free(&rominfo, NULL);
    return NULL;
 }
 
 /* Free a ROM */
-void rom_free(rominfo_t **rominfo)
+void rom_free(rominfo_t **rominfo, ppu_t *ppu)
 {
    if (NULL == *rominfo)
    {
@@ -493,10 +493,9 @@ void rom_free(rominfo_t **rominfo)
    }
 
    /* Restore palette if we loaded in a VS jobber */
-   if ((*rominfo)->flags & ROM_FLAG_VERSUS)
+   if (ppu && ((*rominfo)->flags & ROM_FLAG_VERSUS))
    {
-      /* TODO: bad idea calling nes_getcontextptr... */
-      ppu_setdefaultpal(nes_getcontextptr()->ppu);
+      ppu_setdefaultpal(ppu);
       log_printf("Default NES palette restored\n");
    }
 
@@ -516,11 +515,11 @@ void rom_free(rominfo_t **rominfo)
    gui_sendmsg(GUI_GREEN, "ROM freed");
 }
 
-void rom_freeinfo(rominfo_t *rominfo)
+void rom_freeinfo(rominfo_t *rominfo, ppu_t *ppu)
 {
    if (rominfo) {
       rominfo_t *temp = rominfo;
-      rom_free(&temp);
+      rom_free(&temp, ppu);
    }
 }
 

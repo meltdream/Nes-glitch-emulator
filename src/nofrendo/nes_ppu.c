@@ -299,6 +299,15 @@ ALWAYS_INLINE void pal_write_raw(uint16_t addr, uint8_t v)
 /* ─────────────────── CHR bus accessors ─────────────────── */
 /* Legacy memory mapping compatibility - translates to MMC interface calls */
 static uint8_t *chr_page_ptrs[16]; /* Track page pointers for compatibility */
+static uint8_t *chrram_ptr = NULL; /* Base pointer to CHR RAM */
+static size_t   chrram_size = 0;   /* Size of CHR RAM in bytes */
+
+/* Cached pointer to NES context to avoid global lookups */
+static nes_t *ppu_get_nes(void) {
+    static nes_t *nes = NULL;
+    if (!nes) nes = nes_getcontextptr();
+    return nes;
+}
 
 /* CHR reads use the mapper-provided 1 KiB page table - single source of truth for CHR mapping */
 ALWAYS_INLINE uint8_t chr_read(uint16_t addr)
@@ -315,11 +324,10 @@ ALWAYS_INLINE uint8_t chr_read(uint16_t addr)
     }
     
     /* Fall back for CHR-RAM when no page is mapped */
-    nes_t *nes = nes_getcontextptr();
-    if (nes->rominfo && nes->rominfo->vram) {
-        return nes->rominfo->vram[addr & 0x1FFF];
+    if (chrram_ptr && chrram_size) {
+        return chrram_ptr[addr % chrram_size];
     }
-    
+
     return 0;
 }
 
@@ -336,9 +344,8 @@ ALWAYS_INLINE void ppu_bus_write(uint16_t addr, uint8_t v)
     addr &= 0x3FFF;
     if (addr < 0x2000) {
         /* CHR-RAM write */
-        nes_t *nes = nes_getcontextptr();
-        if (nes->rominfo && nes->rominfo->vram) {
-            nes->rominfo->vram[addr & 0x1FFF] = v;
+        if (chrram_ptr && chrram_size) {
+            chrram_ptr[addr % chrram_size] = v;
         }
         mmc3_track_a12(addr);        /* track A12 edges on writes too */
     } else if (addr < 0x3F00) {
@@ -653,6 +660,7 @@ ALWAYS_INLINE void nmi_check(void)
 void ppu_set_mapper_hook(void (*fn)(uint16_t)) { mapper_ppu_hook = fn; }
 void ppu_setlatchfunc(ppulatchfunc_t fn)       { ppu_latchfunc   = fn; }
 void ppu_setvromswitch(ppuvromswitch_t fn)     { ppu_vromswitch  = fn; }
+void ppu_set_chrram(uint8_t *ptr, size_t size) { chrram_ptr = ptr; chrram_size = size; }
 
 bool ppu_frame_complete(void) 
 {
@@ -684,13 +692,8 @@ void ppu_reset(int hard)
     mmc3_a12_level = false;
     mmc3_a12_low_m2_count = 0;
     
-    /* Reset 4-screen mode based on cartridge flags */
-    nes_t *nes = nes_getcontextptr();
-    if (nes && nes->rominfo) {
-        ppu_four_screen_enabled = !!(nes->rominfo->flags & ROM_FLAG_FOURSCREEN);
-    } else {
-        ppu_four_screen_enabled = false;
-    }
+    /* Reset to default; mapper will configure if needed */
+    ppu_four_screen_enabled = false;
     
     /* Initialize default nametable mirroring (vertical) */
     nametable_mapping[0] = 0;  /* NT $2000 -> CIRAM $0000 */
@@ -947,10 +950,10 @@ void ppu_writehigh(uint32_t addr, uint8_t val)
         nes6502_release();
         
         /* DMA timing: run PPU catch-up for the burnt cycles */
-        nes_t *nes = nes_getcontextptr();
+        nes_t *nes = ppu_get_nes();
         nes->cpu_cycles_total += dma_cycles;
-        uint64_t ppu_target = nes->is_pal_region ? 
-            (nes->cpu_cycles_total * 16) / 5 : 
+        uint64_t ppu_target = nes->is_pal_region ?
+            (nes->cpu_cycles_total * 16) / 5 :
             nes->cpu_cycles_total * 3;
         while (nes->ppu_cycles_total < ppu_target) {
             ppu_clock();
