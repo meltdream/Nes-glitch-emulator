@@ -16,6 +16,7 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 #include "nes.h"
 #include "nes6502.h"
 #include "wram.h"
@@ -52,11 +53,9 @@ static void remap_page(void)
 /* $6000‑7FFF write gate */
 static void wram_write(uint32_t addr, uint8_t val)
 {
-    if (!wram_en || !base)
-        return;                         
-    if (wram_wp) {
-       printf("WRAM write %04X while WP set, PC=%04X\n",  (unsigned)addr,(unsigned)NES->cpu->pc_reg);   /* or another PC getter */
-    }
+    /* Writes are ignored when window disabled, unmapped or write-protected */
+    if (!wram_en || !base || wram_wp)
+        return;
 
     /* Inlined bank_writebyte() – faster, no extra symbol needed */
     NES->cpu->mem_page[addr >> NES6502_BANKSHIFT]

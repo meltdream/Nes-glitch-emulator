@@ -5,7 +5,8 @@
 #include "nes_rom.h"
 #include "new_ppu.h"
 #include <string.h>
-#include "nes6502.h"  
+#include "nes6502.h"
+#include "wram.h"
 
 #define TRACE_MMC3 0
 
@@ -75,9 +76,12 @@ INLINE void map4_clock_irq(void)
 
 /* ─────────────── PPU bus hook ─────────────────────────────────────── */
 #if MAP4_PPU_EDGE_IRQ
-/* ─────────────── PPU bus hook ───────────────────────────────────────
-   Treat as "rising-edge already debounced" callback - just clock IRQ 
-   unconditionally. PPU handles A12 edge detection and debouncing.     */
+/*
+ * Invoked by the PPU on a rising edge of PPU A12 that has been low for
+ * at least three M2 falling edges (≈ one CPU cycle).  The PPU performs
+ * the A12 edge detection and low-time filtering; this callback merely
+ * clocks the counter once per qualifying edge.
+ */
 void map4_ppu_tick(uint16 addr)
 {
     (void)addr; /* Address no longer needed */
@@ -174,8 +178,8 @@ static void map4_write(uint32 a, uint8 v)
     #endif
     break;
 
-    /* $C001 – IRQ reload ------------------------------------------------- */
-    case 0xC001: irq.reload_flag = true;  irq.counter = 0;
+    /* $C001 – IRQ reload flag (actual reload on next A12 rise) --------- */
+    case 0xC001: irq.reload_flag = true;
     #ifdef TRACE_MMC3  
         //LOG("map4_write: $C001 → reload\n"); 
     #endif
@@ -188,10 +192,10 @@ static void map4_write(uint32 a, uint8 v)
  break;
 
     /* $E001 – IRQ enable ------------------------------------------------- */
-    case 0xE001: irq.enabled = true;  
-        #ifdef TRACE_MMC3 
+    case 0xE001: irq.enabled = true;
+        #ifdef TRACE_MMC3
             //LOG("map4_write: $E001 → IRQ enable\n");
-        #endif;
+        #endif
         break;
     }
     /*#ifdef TRACE_MMC3

@@ -115,6 +115,7 @@ extern int nes_insertcart(const char *filename, nes_t *machine);
 extern void nes_setfiq(uint8 state);
 extern void nes_nmi(void);
 extern void nes_irq(void);
+extern void nes_irq_ack(void);
 extern void nes_emulate(void);
 extern void nes_setregion(bool is_pal);
 
