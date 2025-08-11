@@ -245,15 +245,63 @@ static struct {
 } ppu;
 
 /* ─────────────────── Helpers ─────────────────── */
-static inline uint8_t apply_grayscale(uint8_t idx) 
-{ 
-    return (idx & 0x30) | (idx & 0x03); 
+static inline uint8_t apply_grayscale(uint8_t idx)
+{
+    return (idx & 0x30) | (idx & 0x03);
 }
 
-static inline uint8_t apply_emphasis_idx(uint8_t idx, uint8_t mask) 
-{ 
-    /* Simple emphasis implementation - could be replaced with full palette table lookup */
-    return idx; /* TODO: Implement full emphasis table if needed by backend */
+/* Emphasis lookup table --------------------------------------------------- */
+static uint8_t emphasis_lut[8][64];
+static bool    emphasis_lut_init = false;
+
+static void init_emphasis_lut(void)
+{
+    if (emphasis_lut_init)
+        return;
+
+    static const float emph[8][3] = {
+        {1.00f, 1.00f, 1.00f}, /* --- */
+        {1.00f, 0.75f, 0.75f}, /* r-- */
+        {0.75f, 1.00f, 0.75f}, /* -g- */
+        {0.75f, 0.75f, 1.00f}, /* rg- */
+        {1.00f, 0.75f, 1.00f}, /* --b */
+        {0.75f, 1.00f, 1.00f}, /* r-b */
+        {1.00f, 1.00f, 0.75f}, /* -gb */
+        {0.75f, 0.75f, 0.75f}  /* rgb */
+    };
+
+    for (int e = 0; e < 8; ++e) {
+        for (int i = 0; i < 64; ++i) {
+            rgb_t base = nes_palette[i];
+            float r = base.r * emph[e][0];
+            float g = base.g * emph[e][1];
+            float b = base.b * emph[e][2];
+
+            int best = 0;
+            int best_err = 1 << 30;
+            for (int j = 0; j < 64; ++j) {
+                rgb_t cand = nes_palette[j];
+                int dr = (int)r - cand.r;
+                int dg = (int)g - cand.g;
+                int db = (int)b - cand.b;
+                int err = dr * dr + dg * dg + db * db;
+                if (err < best_err) {
+                    best_err = err;
+                    best = j;
+                }
+            }
+            emphasis_lut[e][i] = (uint8_t)best;
+        }
+    }
+
+    emphasis_lut_init = true;
+}
+
+static inline uint8_t apply_emphasis_idx(uint8_t idx, uint8_t mask)
+{
+    init_emphasis_lut();
+    uint8_t emph = (mask >> 5) & 0x07;
+    return emphasis_lut[emph][idx & 0x3F];
 }
 
 ALWAYS_INLINE uint8_t *ciram_ptr(uint16_t addr)
