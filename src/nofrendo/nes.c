@@ -21,11 +21,20 @@
 ** (adapted to the cycle-accurate PPU, August 2025)
 */
 
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 199309L
+#endif
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <time.h>
+#endif
 
 #include "noftypes.h"
 #include "nes6502.h"
@@ -422,15 +431,14 @@ void nes_emulate(void)
 
    while (false == nes.poweroff)
    {
-      /* TODO */
-      nofrendo_ticks++;
-      if (nofrendo_ticks != last_ticks)
+      int current_ticks = nofrendo_ticks;
+      if (current_ticks != last_ticks)
       {
-         int tick_diff = nofrendo_ticks - last_ticks;
+         int tick_diff = current_ticks - last_ticks;
 
          frames_to_render += tick_diff;
          /* gui_tick(tick_diff); */
-         last_ticks = nofrendo_ticks;
+         last_ticks = current_ticks;
       }
 
       if (true == nes.pause)
@@ -451,6 +459,17 @@ void nes_emulate(void)
          frames_to_render = 0;
          nes_renderframe(true);
          system_video(true);
+      }
+      else
+      {
+#ifdef _WIN32
+         Sleep(1);
+#else
+         struct timespec ts;
+         ts.tv_sec = 0;
+         ts.tv_nsec = 1000000;
+         nanosleep(&ts, NULL);
+#endif
       }
    }
 }
