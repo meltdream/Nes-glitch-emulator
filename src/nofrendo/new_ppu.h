@@ -110,6 +110,7 @@ void   ppu_destroy(ppu_t **ppu);  /* likewise – keeps API intact */
 void   ppu_setpal       (ppu_t *ppu, rgb_t *pal64);
 void   ppu_setdefaultpal(ppu_t *ppu);
 void   ppu_displaysprites(bool enable);
+void   ppu_set_draw_enabled(bool enable); /* skip final pixel writes when false */
 bool   ppu_enabled(void);
 
 /* Debug/GUI functions */

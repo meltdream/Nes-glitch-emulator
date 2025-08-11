@@ -149,6 +149,11 @@ static bool ppu_four_screen_enabled = false;
 /* Global sprite display toggle */
 static bool sprites_enabled = true;
 
+/* Global flag to control whether the PPU should actually write pixels to the
+ * framebuffer. When disabled the PPU still runs through all cycles so timing
+ * and side effects (sprite-0 hits, scroll updates, etc.) remain intact. */
+static bool draw_enabled = true;
+
 /* PAL timing option */
 static bool ppu_is_pal = false;
 
@@ -770,31 +775,35 @@ void ppu_clock(void)
 
     /* 1. Visible pixel -------------------------------------------------- */
     if (IS_VISIBLE_LINE && ppu.dot >= 1 && ppu.dot <= 256) {
-        uint8_t *fbline = ppu.fb + (ppu.scanline * NES_SCREEN_WIDTH);
+        /* Always resolve sprite/background priority so side effects such as
+         * sprite-0 hits occur even if we skip writing the final pixel. */
         uint8_t bg_pal_row, bg_px;        bg_px  = bg_pixel(&bg_pal_row);
         uint8_t spr_pal_row, spr_pri, spr_px; spr_px = sprite_pixel(&spr_pal_row, &spr_pri);
 
-        uint8_t final_idx;
-        if (!spr_px && !bg_px) {
-            final_idx = pal_read_raw(0);
-        } else if (!spr_px) {
-            final_idx = pal_read_raw((bg_pal_row << 2) | bg_px);
-        } else if (!bg_px) {
-            final_idx = pal_read_raw(0x10 | (spr_pal_row << 2) | spr_px);
-        } else {
-            if (spr_pri) final_idx = pal_read_raw((bg_pal_row << 2) | bg_px);
-            else         final_idx = pal_read_raw(0x10 | (spr_pal_row << 2) | spr_px);
+        if (draw_enabled) {
+            uint8_t *fbline = ppu.fb + (ppu.scanline * NES_SCREEN_WIDTH);
+            uint8_t final_idx;
+            if (!spr_px && !bg_px) {
+                final_idx = pal_read_raw(0);
+            } else if (!spr_px) {
+                final_idx = pal_read_raw((bg_pal_row << 2) | bg_px);
+            } else if (!bg_px) {
+                final_idx = pal_read_raw(0x10 | (spr_pal_row << 2) | spr_px);
+            } else {
+                if (spr_pri) final_idx = pal_read_raw((bg_pal_row << 2) | bg_px);
+                else         final_idx = pal_read_raw(0x10 | (spr_pal_row << 2) | spr_px);
+            }
+
+            /* Apply PPUMASK grayscale and emphasis */
+            if (ppu.mask & 0x01) { /* Grayscale */
+                final_idx = apply_grayscale(final_idx);
+            }
+            if (ppu.mask & 0xE0) { /* Emphasis bits */
+                final_idx = apply_emphasis_idx(final_idx, ppu.mask);
+            }
+
+            fbline[ppu.dot - 1] = final_idx;
         }
-        
-        /* Apply PPUMASK grayscale and emphasis */
-        if (ppu.mask & 0x01) { /* Grayscale */
-            final_idx = apply_grayscale(final_idx);
-        }
-        if (ppu.mask & 0xE0) { /* Emphasis bits */
-            final_idx = apply_emphasis_idx(final_idx, ppu.mask);
-        }
-        
-        fbline[ppu.dot - 1] = final_idx;
     }
 
     /* 2. Shift registers ------------------------------------------------ */
@@ -1046,9 +1055,14 @@ void ppu_setdefaultpal(ppu_t *ppu)
     vid_setpalette(nes_palette);
 }
 
-void ppu_displaysprites(bool enable) 
-{ 
+void ppu_displaysprites(bool enable)
+{
     sprites_enabled = enable;
+}
+
+void ppu_set_draw_enabled(bool enable)
+{
+    draw_enabled = enable;
 }
 
 bool ppu_enabled(void)
