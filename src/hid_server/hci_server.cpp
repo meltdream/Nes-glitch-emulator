@@ -140,7 +140,7 @@ const char* hci_cmd(int c)
         case HCI_REMOTE_NAME_REQUEST:           return "HCI_REMOTE_NAME_REQUEST";
     }
     static char s[32];
-    sprintf(s,"HCICMD:%04X",c);
+    snprintf(s, sizeof(s), "HCICMD:%04X", c);
     return s;
 }
 
@@ -183,7 +183,7 @@ const char* hci_evt(int c)
     if (c <= 0x1D)
         return _hci_evt[c];
     static char s[32];
-    sprintf(s,"HCIEVT:%04X",c);
+    snprintf(s, sizeof(s), "HCIEVT:%04X", c);
     return s;
 }
 
@@ -323,7 +323,7 @@ const char* batostr(const bdaddr_t& a)
 {
     static char buf[32];
     auto d = a.b;
-    sprintf(buf,"%02X:%02X:%02X:%02X:%02X:%02X",d[5],d[4],d[3],d[2],d[1],d[0]);
+    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", d[5], d[4], d[3], d[2], d[1], d[0]);
     return buf;
 }
 
@@ -371,9 +371,11 @@ public:
 
 static void to_hex(char* dst, const uint8_t* src, int len)
 {
+    static const char* h = "0123456789ABCDEF";
     while (len--) {
-        sprintf(dst,"%02X",*src++);
-        dst += 2;
+        *dst++ = h[*src >> 4];
+        *dst++ = h[*src & 0x0F];
+        ++src;
     }
 }
 
@@ -489,12 +491,14 @@ public:
 
     int l2_close(int scid, bool this_end)
     {
-        auto s = get_socket(scid);
-        if (!s)
+        auto it = _sockets.find(scid);
+        if (it == _sockets.end())
             return -1;
+        auto* s = it->second;
         if (this_end && s->_state == L2CAP_OPEN)
-            disconnect(s->_scid,s->_dcid);  // tell other end
-        _sockets.erase(scid);
+            disconnect(s->_scid, s->_dcid);  // tell other end
+        delete s;
+        _sockets.erase(it);
         return 0;
     }
 
