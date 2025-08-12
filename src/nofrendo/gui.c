@@ -105,7 +105,7 @@ void gui_togglefs(void)
 /* display rom information */
 void gui_displayinfo()
 {
-   gui_sendmsg(GUI_ORANGE, (char *) rom_getinfo(nes_getcontextptr()->rominfo));
+   gui_sendmsg(GUI_ORANGE, "%s", rom_getinfo(nes_getcontextptr()->rominfo));
 }
 
 void gui_toggle_chan(int chan)
@@ -179,7 +179,9 @@ static bitmap_t *gui_surface;
 /* Put a pixel on our bitmap- just for GUI use */
 INLINE void gui_putpixel(int x_pos, int y_pos, uint8 color)
 {
-   gui_surface->line[y_pos][x_pos] = color;
+   if ((unsigned)x_pos < gui_surface->width &&
+       (unsigned)y_pos < gui_surface->height)
+      gui_surface->line[y_pos][x_pos] = color;
 }
 
 /* Line drawing */
@@ -257,7 +259,16 @@ static int gui_textlen(char *str, font_t *font)
    int num_chars = strlen(str);
 
    while (num_chars--)
-      pixels += font->character[(*str++ - 32)].spacing;
+   {
+      int code = (uint8)*str++;
+      if (code > 0x7F)
+         code = 0x7F;
+      if (code < 32)
+         code = 0;
+      else
+         code -= 32;
+      pixels += font->character[code].spacing;
+   }
 
    return pixels;
 }
@@ -274,10 +285,13 @@ static int gui_textout(char *str, int x_pos, int y_pos, font_t *font, uint8 colo
    while (num_chars--)
    {
       /* Turn ASCII code into letter */
-      code = *str++;
+      code = (uint8)*str++;
       if (code > 0x7F)
          code = 0x7F;
-      code -= 32; /* normalize */
+      if (code < 32)
+         code = 0;
+      else
+         code -= 32; /* normalize */
       gui_putchar(font->character[code].lines, font->height, x_new, y_pos, color);
       x_new += font->character[code].spacing;
    }
@@ -291,6 +305,9 @@ static int gui_textbar(char *str, int x_pos, int y_pos, font_t *font,
                        uint8 color, uint8 bgcolor, bool buttonstate)
 {
    int width = gui_textlen(str, &small);
+   int maxw  = gui_surface->width - x_pos - 3;
+   if (width > maxw)
+      width = (maxw > 0 ? maxw : 0);
 
    /* Fill the 'button' */
    gui_buttonrect(x_pos, y_pos, width + 3, font->height + 3, buttonstate);
@@ -584,11 +601,11 @@ void gui_frame(bool draw)
    }
 }
 
-void gui_sendmsg(int color, char *format, ...)
+void gui_sendmsg(int color, const char *format, ...)
 {
    va_list arg;
    va_start(arg, format);
-   vsprintf(msg.text, format, arg);
+   vsnprintf(msg.text, sizeof msg.text, format, arg);
 
 #ifdef NOFRENDO_DEBUG
    log_print("GUI: ");
