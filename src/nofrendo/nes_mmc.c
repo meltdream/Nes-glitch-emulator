@@ -217,6 +217,11 @@ static void mmc_setpages(void)
 /* Mapper initialization routine */
 void mmc_reset(void)
 {
+   /* If no cartridge has been inserted yet, there is no mapper state
+      to configure. Guard against dereferencing NULL pointers. */
+   if (NULL == mmc.cart || NULL == mmc.intf)
+      return;
+
    mmc_setpages();
 
    ppu_setlatchfunc(NULL);
