@@ -548,7 +548,17 @@ static int nes_init(void)
 
    /* Initialize CPU context */
    memset(nes.cpu, 0, sizeof(nes6502_context));
-   
+
+   /* Allocate 2 KiB of internal RAM and mirror it across the first
+      8 KiB of the CPU address space.  nes_reset() expects mem_page[0]
+      to be valid, otherwise it will attempt to memset a NULL pointer
+      and crash. */
+   nes.cpu->mem_page[0] = calloc(1, NES_RAMSIZE);
+   if (NULL == nes.cpu->mem_page[0])
+      return NESERR_OUT_OF_MEMORY;
+   for (int i = 1; i < 4; i++)
+      nes.cpu->mem_page[i] = nes.cpu->mem_page[0];
+
    /* Initialize handler arrays to safe defaults BEFORE assigning to CPU */
    memset(nes.readhandler, 0, sizeof(nes.readhandler));
    memset(nes.writehandler, 0, sizeof(nes.writehandler));
@@ -566,6 +576,9 @@ static int nes_init(void)
    /* setcart removed - initialization handled elsewhere */
 
    build_address_handlers(&nes);
+
+   /* Make the 6502 core aware of the freshly initialised context */
+   nes6502_setcontext(nes.cpu);
 
    nes.poweroff = false;
    nes.pause = false;
@@ -606,8 +619,11 @@ void nes_destroy(nes_t **machine)
          apu_destroy((*machine)->apu);
       if ((*machine)->ppu)
          ppu_destroy(&(*machine)->ppu);
-      if ((*machine)->cpu)
+      if ((*machine)->cpu) {
+         if ((*machine)->cpu->mem_page[0])
+            free((*machine)->cpu->mem_page[0]);
          free((*machine)->cpu);
+      }
 
       if ((*machine)->rominfo)
          rom_freeinfo((*machine)->rominfo, (*machine)->ppu);
