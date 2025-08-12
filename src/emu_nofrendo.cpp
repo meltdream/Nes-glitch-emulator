@@ -437,8 +437,20 @@ public:
             return -1;
         }
 
-        nes_emulate_init(path.c_str(),width,height);
+        if (nes_emulate_init(path.c_str(),width,height) != 0) {
+            printf("nes_emulate_init failed for %s\n",path.c_str());
+            unmap_file(_nofrendo_rom);
+            _nofrendo_rom = 0;
+            return -1;
+        }
+
         _lines = nes_emulate_frame(true);   // first frame!
+        if (!_lines) {
+            printf("nes_emulate_frame failed\n");
+            unmap_file(_nofrendo_rom);
+            _nofrendo_rom = 0;
+            return -1;
+        }
         return 0;
     }
 
