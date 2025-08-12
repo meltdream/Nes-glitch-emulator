@@ -1235,7 +1235,7 @@ public:
             uint8_t* data;
             if (load(path+".cfg",&data,&len) == 0) {
                 string cfg((const char*)data,len);
-                delete data;
+                delete[] data;
                 return cfg + " \"" + path + "\"";
             }
         }
