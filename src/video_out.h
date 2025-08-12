@@ -147,7 +147,10 @@ static esp_err_t start_dma(int line_width,int samples_per_cc, int ch = 1)
 void video_init_hw(int line_width, int samples_per_cc)
 {
     // setup apll 4x NTSC or PAL colorburst rate
-    start_dma(line_width,samples_per_cc,1);
+    if (start_dma(line_width,samples_per_cc,1) != ESP_OK) {
+        printf("start_dma failed\n");
+        return;
+    }
 
     // Now ideally we would like to use the decoupled left DAC channel to produce audio
     // But when using the APLL there appears to be some clock domain conflict that causes
@@ -167,7 +170,11 @@ void video_init_hw(int line_width, int samples_per_cc)
     //                   |
     //                   v gnd
 
-    ledcSetup(0,2000000,7);    // 625000 khz is as fast as we go w 7 bits
+    double freq = ledcSetup(0,625000,7);    // 625 kHz is as fast as we go w 7 bits
+    if (freq == 0) {
+        printf("ledcSetup failed\n");
+        return;
+    }
     ledcAttachPin(AUDIO_PIN, 0);
     ledcWrite(0,0);
 

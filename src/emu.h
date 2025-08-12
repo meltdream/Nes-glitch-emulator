@@ -24,6 +24,8 @@
 #include "string.h"
 #include "dirent.h"
 
+#include <stdint.h>
+
 #include <string>
 #include <vector>
 #include <map>
