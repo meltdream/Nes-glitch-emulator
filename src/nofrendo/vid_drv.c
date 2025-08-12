@@ -132,13 +132,15 @@ void vid_setpalette(rgb_t *p)
 }
 
 /* blits a bitmap onto primary buffer */
-void vid_blit(bitmap_t *bitmap, int src_x, int src_y, int dest_x, int dest_y, 
+void vid_blit(bitmap_t *bitmap, int src_x, int src_y, int dest_x, int dest_y,
               int width, int height)
 {
    int bitmap_pitch, primary_pitch;
    uint8 *dest_ptr, *src_ptr;
 
    ASSERT(bitmap);
+   if (!primary_buffer)
+      return;
 
    /* clip to source */
    if (src_y >= bitmap->height)
@@ -337,8 +339,8 @@ void vid_flush(void)
    bitmap_t *temp;
    int num_dirties;
    rect_t dirty_rects[MAX_DIRTIES];
-
-   ASSERT(driver);
+   if (!driver || !primary_buffer)
+      return;
 
    if (true == driver->invalidate)
    {

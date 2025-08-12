@@ -263,10 +263,13 @@ int nes_emulate_init(const char* path, int width, int height)
            return -1;
         if (vid_init(width,height,&sdlDriver))
             return -1;
+        if (vid_setmode(NES_SCREEN_WIDTH, 240))
+            return -1;
         event_init();
         event_set_system(system_nes);
         _nes_p = nes_create();
-        vid_setmode(NES_SCREEN_WIDTH, 240);
+        if (!_nes_p)
+            return -1;
     }
     if (nes_insertcart(path,_nes_p))
         return -1;
