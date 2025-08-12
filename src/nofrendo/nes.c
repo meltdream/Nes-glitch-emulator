@@ -509,7 +509,9 @@ void nes_reset(int reset_type)
    if (HARD_RESET == reset_type)
    {
       memset(nes.cpu->mem_page[0], 0, NES_RAMSIZE);
-      if (nes.rominfo->vram)
+      /* rominfo may be NULL when the emulator hasn't loaded a cartridge yet.
+         Guard against dereferencing a NULL pointer before trashing VRAM. */
+      if (nes.rominfo && nes.rominfo->vram)
          mem_trash(nes.rominfo->vram, 0x2000 * nes.rominfo->vram_banks);
    }
 
