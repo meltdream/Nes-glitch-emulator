@@ -104,7 +104,7 @@ public:
 
     ~CrapFS()
     {
-        delete _buf;
+        delete[] _buf;
     }
 
     uint32_t align(uint32_t n)
@@ -163,7 +163,7 @@ public:
             i += n;
         }
         fclose(f);
-        delete buf;
+        delete[] buf;
         return err;
     }
 
@@ -234,7 +234,7 @@ uint8_t* map_file(const char* path, int len)
 
 void unmap_file(uint8_t* ptr)
 {
-    delete ptr;
+    delete[] ptr;
 }
 
 FILE* mkfile(const char* path)
