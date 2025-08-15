@@ -245,6 +245,13 @@ static struct {
     uint8_t    eval_read_latch;  /* last byte read on odd cycle */
     bool       oam_write_during_eval; /* OAM write occurred during sprite eval */
 
+    /* Sprite fetch state */
+    uint8_t    spr_fetch_slot;   /* 0..7 */
+    uint8_t    spr_fetch_phase;  /* 0..7 within current sprite */
+    uint8_t    spr_fetch_tmpY, spr_fetch_tile, spr_fetch_attr, spr_fetch_x;
+    uint8_t    spr_fetch_pt_lo, spr_fetch_pt_hi;
+    uint16_t   spr_fetch_addr;
+
     /* palette */
     uint8_t palette[32];
 
@@ -578,65 +585,6 @@ static void eval_sprite_write_secondary(void)
 /* Legacy sprite evaluation function removed - now using cycle-accurate evaluation */
 
 /* ─────────────────── Sprite fetch (now with MMC-2 latch support) ─────────────────── */
-static void fetch_sprite_tiles(void)
-{
-    uint8_t spr_h = (ppu.ctrl & PPU_CTRL0F_SPR16) ? 16 : 8;
-    uint16_t cur_line = IS_PRERENDER_LINE ? 0 : (ppu.scanline + 1);
-
-    for (uint8_t i = 0; i < SPR_UNIT_MAX; ++i)
-        ppu.spr[i].in_range = false;
-
-    uint8_t min_x = 255; /* for early-out optimisation */
-
-    for (uint8_t i = 0; i < ppu.sprite_count && i < SPR_UNIT_MAX; ++i) {
-        uint8_t *o = &ppu.sec_oam[i * 4];
-        uint8_t y      = o[0];
-        uint8_t tile   = o[1];
-        uint8_t attr   = o[2];
-        uint8_t x      = o[3];
-
-        uint8_t row = cur_line - y;
-        if (attr & OAMF_VFLIP) row = (spr_h - 1) - row;
-
-        uint16_t addr;
-        if (spr_h == 16) {
-            uint8_t even_tile = tile & 0xFE;                /* top tile number (even) */
-            uint16_t bank = (tile & 1) ? 0x1000 : 0x0000;   /* select pattern table */
-            uint8_t fine = row & 7;                         /* fine Y within tile */
-            uint16_t offset = (row & 8) ? 16 : 0;           /* bottom half uses +16 */
-            addr = bank + even_tile * 16 + offset + fine;
-        } else {
-            uint16_t base = (ppu.ctrl & PPU_CTRL0F_SPRADDR) ? 0x1000 : 0x0000;
-            addr = base + tile * 16 + row;
-        }
-
-        /* MMC-2 / MMC-4 sprite latch */
-        if (ppu_latchfunc) {
-            uint16_t spr_base = (spr_h == 16)
-                                ? ((tile & 1) ? 0x1000 : 0x0000)
-                                : ((ppu.ctrl & PPU_CTRL0F_SPRADDR) ? 0x1000 : 0x0000);
-            ppu_latchfunc(spr_base, tile);
-        }
-
-        uint8_t lo = chr_read(addr);
-        uint8_t hi = chr_read(addr + 8);
-        if (attr & OAMF_HFLIP) {
-            lo = bitrev[lo];
-            hi = bitrev[hi];
-        }
-
-        spr_unit_t *u = &ppu.spr[i];
-        u->x      = x;
-        u->pt_lo  = lo;
-        u->pt_hi  = hi;
-        u->attr   = attr;
-        u->in_range = true;
-        if (x < min_x) min_x = x;
-    }
-
-    ppu.next_sprite_xmin = (min_x == 255) ? 0 : min_x;
-}
-
 ALWAYS_INLINE void sprite_shift(void)
 {
     uint8_t min_x = 255;
@@ -893,19 +841,102 @@ void ppu_clock(void)
     if (ppu.dot == 257) {
         ppu.oam_addr = 0; /* hardware forces this */
         ppu.oam_write_during_eval = false; /* clear after eval window */
-        
+
         /* Set overflow flag based on evaluation results */
-        if (ppu.eval_overflow) ppu.status |= PPU_STATF_MAXSPRITE; 
+        if (ppu.eval_overflow) ppu.status |= PPU_STATF_MAXSPRITE;
         else ppu.status &= ~PPU_STATF_MAXSPRITE;
-        
+
         /* Calculate sprite count for fetch */
         ppu.sprite_count = (ppu.eval_sec_idx >> 2);
         if (ppu.sprite_count > 8) ppu.sprite_count = 8;
-        
-        /* Only fetch sprite tiles, no re-evaluation */
-        if ((IS_VISIBLE_LINE || IS_PRERENDER_LINE) && RENDERING_ENABLED)
-            fetch_sprite_tiles();
+
+        /* Initialise sprite fetch state */
+        ppu.spr_fetch_slot = 0;
+        ppu.spr_fetch_phase = 0;
+        ppu.next_sprite_xmin = 255;
+        for (uint8_t i = 0; i < SPR_UNIT_MAX; ++i)
+            ppu.spr[i].in_range = false;
     }
+
+    /* Per-dot sprite tile fetch (dots 257-320) */
+    if ((IS_VISIBLE_LINE || IS_PRERENDER_LINE) && RENDERING_ENABLED &&
+        ppu.dot >= 257 && ppu.dot <= 320) {
+        uint8_t rel = ppu.dot - 257;
+        uint8_t slot = rel >> 3;
+        uint8_t phase = rel & 7;
+        ppu.spr_fetch_slot = slot;
+        ppu.spr_fetch_phase = phase;
+
+        uint8_t spr_h = (ppu.ctrl & PPU_CTRL0F_SPR16) ? 16 : 8;
+        uint16_t cur_line = IS_PRERENDER_LINE ? 0 : (ppu.scanline + 1);
+
+        switch (phase) {
+        case 0:
+            ppu.spr_fetch_tmpY = ppu.sec_oam[slot * 4 + 0];
+            break;
+        case 1:
+            ppu.spr_fetch_tile = ppu.sec_oam[slot * 4 + 1];
+            break;
+        case 2:
+            ppu.spr_fetch_attr = ppu.sec_oam[slot * 4 + 2];
+            break;
+        case 3:
+            ppu.spr_fetch_x = ppu.sec_oam[slot * 4 + 3];
+            break;
+        case 4: {
+            uint8_t row = cur_line - ppu.spr_fetch_tmpY;
+            if (ppu.spr_fetch_attr & OAMF_VFLIP) row = (spr_h - 1) - row;
+            uint8_t tile = ppu.spr_fetch_tile;
+            uint16_t addr;
+            if (spr_h == 16) {
+                uint8_t even_tile = tile & 0xFE;
+                uint16_t bank = (tile & 1) ? 0x1000 : 0x0000;
+                uint8_t fine = row & 7;
+                uint16_t offset = (row & 8) ? 16 : 0;
+                addr = bank + even_tile * 16 + offset + fine;
+            } else {
+                uint16_t base = (ppu.ctrl & PPU_CTRL0F_SPRADDR) ? 0x1000 : 0x0000;
+                addr = base + tile * 16 + row;
+            }
+            if (ppu_latchfunc) {
+                uint16_t spr_base = (spr_h == 16)
+                                   ? ((tile & 1) ? 0x1000 : 0x0000)
+                                   : ((ppu.ctrl & PPU_CTRL0F_SPRADDR) ? 0x1000 : 0x0000);
+                ppu_latchfunc(spr_base, tile);
+            }
+            ppu.spr_fetch_addr = addr;
+            uint8_t lo = chr_read(addr);
+            if (ppu.spr_fetch_attr & OAMF_HFLIP) lo = bitrev[lo];
+            ppu.spr_fetch_pt_lo = lo;
+            break;
+        }
+        case 5: {
+            uint8_t hi = chr_read(ppu.spr_fetch_addr + 8);
+            if (ppu.spr_fetch_attr & OAMF_HFLIP) hi = bitrev[hi];
+            ppu.spr_fetch_pt_hi = hi;
+            break;
+        }
+        case 6:
+            chr_read(ppu.spr_fetch_addr);
+            break;
+        case 7:
+            chr_read(ppu.spr_fetch_addr);
+            if (slot < ppu.sprite_count) {
+                spr_unit_t *u = &ppu.spr[slot];
+                u->x      = ppu.spr_fetch_x;
+                u->pt_lo  = ppu.spr_fetch_pt_lo;
+                u->pt_hi  = ppu.spr_fetch_pt_hi;
+                u->attr   = ppu.spr_fetch_attr;
+                u->in_range = true;
+                if (ppu.spr_fetch_x < ppu.next_sprite_xmin)
+                    ppu.next_sprite_xmin = ppu.spr_fetch_x;
+            }
+            break;
+        }
+    }
+
+    if (ppu.dot == 321 && ppu.next_sprite_xmin == 255)
+        ppu.next_sprite_xmin = 0;
 
     /* 5. VBlank --------------------------------------------------------- */
     if (ppu.scanline == 241 && ppu.dot == 1) {
