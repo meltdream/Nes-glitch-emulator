@@ -947,7 +947,12 @@ uint8_t ppu_read(uint32_t addr)
         ppu.open_bus = ret;
         break;
     case 4: /* OAMDATA */
-        ret = ppu.oam[ppu.oam_addr];
+        if (RENDERING_ENABLED && (IS_VISIBLE_LINE || IS_PRERENDER_LINE) &&
+            ppu.dot >= 65 && ppu.dot <= 256) {
+            ret = ppu.eval_read_latch;
+        } else {
+            ret = ppu.oam[ppu.oam_addr];
+        }
         ppu.open_bus = ret;
         break;
     case 7: /* PPUDATA */
