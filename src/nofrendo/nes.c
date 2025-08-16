@@ -325,44 +325,6 @@ static void nes_checkfiq(int cycles_delta)
    }
 }
 
-static void ppu_catchup(void)
-{
-   uint64_t ppu_target;
-   
-   if (nes.is_pal_region) {
-      /* Use delta-based calculation to prevent drift */
-      uint64_t cpu_delta = nes.cpu_cycles_total - nes.last_catchup_cpu_cycles;
-      
-      /* Apply 16/5 ratio to delta only */
-      uint64_t ppu_delta_base = (cpu_delta * 16) / 5;
-      uint64_t remainder = (cpu_delta * 16) % 5;
-      
-      /* Add remainder to accumulator */
-      nes.pal_fractional_acc += remainder;
-      
-      /* Extract whole cycles from accumulator */
-      uint64_t extra_cycles = nes.pal_fractional_acc / 5;
-      nes.pal_fractional_acc %= 5;
-      
-      ppu_target = nes.ppu_cycles_total + ppu_delta_base + extra_cycles;
-      nes.last_catchup_cpu_cycles = nes.cpu_cycles_total;
-   } else {
-      ppu_target = nes.cpu_cycles_total * 3;
-   }
-   
-   while (nes.ppu_cycles_total < ppu_target) {
-      ppu_clock();
-      nes.ppu_cycles_total++;
-   }
-   
-   /* Debug assertion to verify timing invariants */
-   #ifdef DEBUG
-   /* PAL is exactly 16/5 = 3.2 PPU per CPU */
-   uint64_t expected_min = nes.cpu_cycles_total * (nes.is_pal_region ? 16 : 3) / (nes.is_pal_region ? 5 : 1);
-   uint64_t expected_max = expected_min + 1;
-   assert(nes.ppu_cycles_total >= expected_min && nes.ppu_cycles_total <= expected_max);
-   #endif
-}
 
 void nes_nmi(void)
 {
@@ -408,9 +370,6 @@ void nes_renderframe(bool draw_flag)
       /* APU frame-IRQ advancement in CPU stepping path */
       nes_checkfiq(cpu_cycles);
 
-      /* Run PPU catch-up scheduler */
-      ppu_catchup();
-      
       /* Check frame completion only once per iteration to avoid race conditions */
       frame_done = ppu_frame_complete();
    }
@@ -519,14 +478,12 @@ void nes_reset(int reset_type)
    ppu_reset(reset_type);
    mmc_reset();
    
-   /* Reset alignment: clock PPU for 7 * region_ratio CPU cycles before CPU reset */
-   int ppu_cycles_before_cpu_reset = nes.is_pal_region ? (7 * 16) / 5 : 7 * 3;
-   for (int i = 0; i < ppu_cycles_before_cpu_reset; i++) {
-      ppu_clock();
-      nes.ppu_cycles_total++;
+   /* Reset alignment: advance PPU alongside 7 CPU cycles before CPU reset */
+   for (int i = 0; i < 7; i++) {
+      ppu_step_one_cpu_cycle();
+      nes.cpu_cycles_total++;
    }
-   nes.cpu_cycles_total += 7;  /* Account for the CPU cycles we're simulating */
-   
+
    nes6502_reset();
 
    nes.fiq_occurred = false;
@@ -591,7 +548,7 @@ static int nes_init(void)
    nes.fiq_state = 0;
    nes.fiq_cycles = (int) NES_FIQ_PERIOD;
    
-   /* Initialize catch-up scheduler */
+   /* Initialize global cycle counters */
    nes.cpu_cycles_total = 0;
    nes.ppu_cycles_total = 0;
    nes.last_catchup_cpu_cycles = 0;

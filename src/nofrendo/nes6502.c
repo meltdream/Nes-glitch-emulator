@@ -30,6 +30,22 @@
 //#include "dis6502.h"
 uint8 ext_irq_line = 0;
 
+/* Internal CPU context and cycle bookkeeping */
+static nes6502_context cpu;
+static int remaining_cycles = 0; /* so we can release timeslice */
+
+/* Advance the CPU by n cycles while interleaving the PPU and mapper */
+static inline void cpu_advance_cycles(int n) {
+    for (int i = 0; i < n; i++) {
+        /* mapper M2 tick per CPU cycle */
+        ppu_mmc3_m2_tick(1);
+        /* advance PPU during this CPU cycle */
+        ppu_step_one_cpu_cycle();
+        /* book-keeping */
+        remaining_cycles -= 1;
+        cpu.total_cycles += 1;
+    }
+}
 
 //#define  NES6502_DISASM
 
@@ -40,9 +56,7 @@ uint8 ext_irq_line = 0;
 
 #define  ADD_CYCLES(x) \
 do { \
-   ppu_mmc3_m2_tick((x)); \
-   remaining_cycles -= (x); \
-   cpu.total_cycles += (x); \
+   cpu_advance_cycles((x)); \
 } while(0)
 
 /*
@@ -1133,11 +1147,6 @@ do { \
    ADD_CYCLES(2); \
 }
 
-
-
-/* internal CPU context */
-static nes6502_context cpu;
-static int remaining_cycles = 0; /* so we can release timeslice */
 /* memory region pointers */
 static uint8 *ram = NULL, *stack = NULL;
 static uint8 null_page[NES6502_BANKSIZE];
