@@ -214,6 +214,13 @@ static struct {
     bool odd_frame;
     bool frame_complete;
 
+    // CPU<->PPU interleave
+    // For NTSC: exactly 3 PPU dots per CPU cycle.
+    // For PAL/Dendy: 16 PPU dots every 5 CPU cycles (3.2 per CPU), scheduled via accumulator.
+    uint8_t  phase_mod3;    // 0..2 sub-slot index inside a CPU cycle (NTSC fast-path)
+    uint8_t  pal_ppu_accum; // 0..4 accumulator in "fifths" for PAL scheduling
+    bool     is_pal_system; // mirrors global region flag
+
     /* NMI timing */
     bool nmi_prev;
     uint8_t nmi_delay;
@@ -705,6 +712,9 @@ void ppu_reset(int hard)
     ppu.fb = vid_getbuffer();
     ppu.status = rand() & 0xE0; /* bits 7-5 random on power-up */
     ppu.open_bus = 0;
+    ppu.phase_mod3 = 0;
+    ppu.pal_ppu_accum = 0;
+    ppu.is_pal_system = ppu_is_pal;
     ppu.eval_sprite_idx = 0;
     ppu.eval_oam_addr = 0;
     ppu.eval_sec_idx = 0;
@@ -963,6 +973,28 @@ void ppu_clock(void)
     }
 }
 
+/* Call exactly once per CPU cycle that elapses on the CPU core.
+ * This function advances the PPU *during that CPU cycle*. */
+void ppu_step_one_cpu_cycle(void) {
+    nes_t *nes = ppu_get_nes();
+    if (!ppu.is_pal_system) {
+        /* NTSC: 3 PPU dots per CPU cycle */
+        ppu_clock(); nes->ppu_cycles_total++;
+        ppu_clock(); nes->ppu_cycles_total++;
+        ppu_clock(); nes->ppu_cycles_total++;
+        /* keep a modulo-3 phase marker if other code wants it */
+        ppu.phase_mod3 = (ppu.phase_mod3 + 1) % 3;
+    } else {
+        /* PAL/Dendy: 16 dots every 5 CPU cycles => 3 or 4 dots per CPU cycle */
+        ppu.pal_ppu_accum += 16;      /* 0..(5*k)+r */
+        while (ppu.pal_ppu_accum >= 5) {
+            ppu_clock();
+            nes->ppu_cycles_total++;
+            ppu.pal_ppu_accum -= 5;
+        }
+    }
+}
+
 /* ─────────────────── CPU ⇆ PPU interface ($2000-$2007) ─────────────────── */
 uint8_t ppu_read(uint32_t addr)
 {
@@ -1069,24 +1101,17 @@ void ppu_writehigh(uint32_t addr, uint8_t val)
         }
         
 #if defined(TRACE_PPU) && TRACE_PPU
-        printf("OAM DMA: start_cycle=%s, total_cycles=%d\n", 
+        printf("OAM DMA: start_cycle=%s, total_cycles=%d\n",
                (cycles & 1) ? "odd" : "even", dma_cycles);
 #endif
-        
-        ppu_mmc3_m2_tick(dma_cycles);
-        nes6502_burn(dma_cycles);
-        nes6502_release();
-        
-        /* DMA timing: run PPU catch-up for the burnt cycles */
         nes_t *nes = ppu_get_nes();
-        nes->cpu_cycles_total += dma_cycles;
-        uint64_t ppu_target = nes->is_pal_region ?
-            (nes->cpu_cycles_total * 16) / 5 :
-            nes->cpu_cycles_total * 3;
-        while (nes->ppu_cycles_total < ppu_target) {
-            ppu_clock();
-            nes->ppu_cycles_total++;
+        for (int i = 0; i < dma_cycles; ++i) {
+            ppu_mmc3_m2_tick(1);
+            ppu_step_one_cpu_cycle();
+            nes6502_burn(1);
+            nes->cpu_cycles_total++;
         }
+        nes6502_release();
 #if defined(ENABLE_VS_SYSTEM)
     } else if (addr == PPU_JOY0) { /* VS-System CHR bank switch */
         if (ppu_vromswitch) ppu_vromswitch(val);
