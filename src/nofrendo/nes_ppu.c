@@ -253,11 +253,11 @@ static struct {
     bool       oam_write_during_eval; /* OAM write occurred during sprite eval */
 
     /* Sprite fetch state */
-    uint8_t    spr_fetch_slot;   /* 0..7 */
-    uint8_t    spr_fetch_phase;  /* 0..7 within current sprite */
-    uint8_t    spr_fetch_tmpY, spr_fetch_tile, spr_fetch_attr, spr_fetch_x;
-    uint8_t    spr_fetch_pt_lo, spr_fetch_pt_hi;
-    uint16_t   spr_fetch_addr;
+    uint8_t  spr_fetch_slot;    // 0..7
+    uint8_t  spr_fetch_phase;   // 0..7 within the 8-cycle sequence
+    uint8_t  spr_tmp_y, spr_tmp_tile, spr_tmp_attr, spr_tmp_x;
+    uint8_t  spr_lo, spr_hi;    // temp hold of fetched pattern bytes for the current slot
+    uint16_t spr_fetch_addr;
 
     /* palette */
     uint8_t palette[32];
@@ -725,6 +725,11 @@ void ppu_reset(int hard)
     ppu.sprite0_slot_next = 0xFF;
     ppu.sprite0_slot_this = 0xFF;
 
+    ppu.spr_fetch_slot = 0;
+    ppu.spr_fetch_phase = 0;
+    ppu.spr_tmp_y = ppu.spr_tmp_tile = ppu.spr_tmp_attr = ppu.spr_tmp_x = 0;
+    ppu.spr_lo = ppu.spr_hi = 0;
+
     ppu.nmi_prev = false;
     ppu.nmi_delay = 0;
     
@@ -882,21 +887,21 @@ void ppu_clock(void)
 
         switch (phase) {
         case 0:
-            ppu.spr_fetch_tmpY = ppu.sec_oam[slot * 4 + 0];
+            ppu.spr_tmp_y = ppu.sec_oam[slot * 4 + 0];
             break;
         case 1:
-            ppu.spr_fetch_tile = ppu.sec_oam[slot * 4 + 1];
+            ppu.spr_tmp_tile = ppu.sec_oam[slot * 4 + 1];
             break;
         case 2:
-            ppu.spr_fetch_attr = ppu.sec_oam[slot * 4 + 2];
+            ppu.spr_tmp_attr = ppu.sec_oam[slot * 4 + 2];
             break;
         case 3:
-            ppu.spr_fetch_x = ppu.sec_oam[slot * 4 + 3];
+            ppu.spr_tmp_x = ppu.sec_oam[slot * 4 + 3];
             break;
         case 4: {
-            uint8_t row = cur_line - ppu.spr_fetch_tmpY;
-            if (ppu.spr_fetch_attr & OAMF_VFLIP) row = (spr_h - 1) - row;
-            uint8_t tile = ppu.spr_fetch_tile;
+            uint8_t row = cur_line - ppu.spr_tmp_y;
+            if (ppu.spr_tmp_attr & OAMF_VFLIP) row = (spr_h - 1) - row;
+            uint8_t tile = ppu.spr_tmp_tile;
             uint16_t addr;
             if (spr_h == 16) {
                 uint8_t even_tile = tile & 0xFE;
@@ -916,14 +921,14 @@ void ppu_clock(void)
             }
             ppu.spr_fetch_addr = addr;
             uint8_t lo = chr_read(addr);
-            if (ppu.spr_fetch_attr & OAMF_HFLIP) lo = bitrev[lo];
-            ppu.spr_fetch_pt_lo = lo;
+            if (ppu.spr_tmp_attr & OAMF_HFLIP) lo = bitrev[lo];
+            ppu.spr_lo = lo;
             break;
         }
         case 5: {
             uint8_t hi = chr_read(ppu.spr_fetch_addr + 8);
-            if (ppu.spr_fetch_attr & OAMF_HFLIP) hi = bitrev[hi];
-            ppu.spr_fetch_pt_hi = hi;
+            if (ppu.spr_tmp_attr & OAMF_HFLIP) hi = bitrev[hi];
+            ppu.spr_hi = hi;
             break;
         }
         case 6:
@@ -933,13 +938,13 @@ void ppu_clock(void)
             chr_read(ppu.spr_fetch_addr);
             if (slot < ppu.sprite_count) {
                 spr_unit_t *u = &ppu.spr[slot];
-                u->x      = ppu.spr_fetch_x;
-                u->pt_lo  = ppu.spr_fetch_pt_lo;
-                u->pt_hi  = ppu.spr_fetch_pt_hi;
-                u->attr   = ppu.spr_fetch_attr;
+                u->x      = ppu.spr_tmp_x;
+                u->pt_lo  = ppu.spr_lo;
+                u->pt_hi  = ppu.spr_hi;
+                u->attr   = ppu.spr_tmp_attr;
                 u->in_range = true;
-                if (ppu.spr_fetch_x < ppu.next_sprite_xmin)
-                    ppu.next_sprite_xmin = ppu.spr_fetch_x;
+                if (ppu.spr_tmp_x < ppu.next_sprite_xmin)
+                    ppu.next_sprite_xmin = ppu.spr_tmp_x;
             }
             break;
         }
@@ -1010,7 +1015,12 @@ uint8_t ppu_read(uint32_t addr)
         ppu.open_bus = ret;
         break;
     case 4: /* OAMDATA */
-        ret = ppu.oam[ppu.oam_addr];
+        if (RENDERING_ENABLED && (IS_VISIBLE_LINE || IS_PRERENDER_LINE) &&
+            ppu.dot >= 65 && ppu.dot <= 256) {
+            ret = ppu.eval_read_latch;
+        } else {
+            ret = ppu.oam[ppu.oam_addr];
+        }
         ppu.open_bus = ret;
         break;
     case 7: /* PPUDATA */
