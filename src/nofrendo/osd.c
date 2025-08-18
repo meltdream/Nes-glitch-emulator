@@ -89,26 +89,65 @@ static void set_palette(rgb_t *pal)
 static void clear(uint8 color) {};
 
 
+/*
+** NES video output
+**
+** The original implementation used a dummy framebuffer of size 1 which
+** resulted in the PPU writing far beyond the allocated memory and corrupting
+** the heap.  Replace this with a statically allocated framebuffer matching the
+** NES resolution (256x240) and back it with a bitmap structure that contains
+** the necessary line pointers.  This mirrors the approach used by the SMS
+** emulator and avoids repeated heap allocations that could lead to
+** fragmentation.
+*/
+
+/* Framebuffer backing store */
+static uint8 fb[DEFAULT_WIDTH * DEFAULT_HEIGHT];
+
+/* Bitmap wrapper providing line pointers for each scanline */
+typedef struct
+{
+    bitmap_t bmp;
+    uint8 *lines[DEFAULT_HEIGHT];
+} nes_bitmap_t;
+
+static nes_bitmap_t nes_screen;
+
 /* acquire the directbuffer for writing */
-bitmap_t* myBitmap = 0;
-uint8 fb[1];  // dummy
 static bitmap_t *lock_write(void)
 {
-//   SDL_LockSurface(mySurface);
-   myBitmap = bmp_createhw((uint8*)fb, DEFAULT_WIDTH, DEFAULT_HEIGHT, 0);
-   return myBitmap;
+    nes_screen.bmp.width = DEFAULT_WIDTH;
+    nes_screen.bmp.height = DEFAULT_HEIGHT;
+    nes_screen.bmp.pitch = DEFAULT_WIDTH;
+    nes_screen.bmp.hardware = true;
+    nes_screen.bmp.data = fb;
+
+    for (int y = 0; y < DEFAULT_HEIGHT; y++)
+        nes_screen.lines[y] = fb + (y * DEFAULT_WIDTH);
+
+    return &nes_screen.bmp;
 }
 
 /* release the resource */
 static void free_write(int num_dirties, rect_t *dirty_rects)
 {
-   bmp_destroy(&myBitmap);
+    (void)num_dirties;
+    (void)dirty_rects;
+    /* nothing to free; framebuffer is static */
 }
 
+/* blit the rendered frame into the framebuffer */
 static void custom_blit(bitmap_t *bmp, int num_dirties, rect_t *dirty_rects)
 {
-    //memcpy(nes_bits,bmp->data,sizeof(nes_bits));
-};
+    (void)num_dirties;
+    (void)dirty_rects;
+
+    int h = bmp->height < DEFAULT_HEIGHT ? bmp->height : DEFAULT_HEIGHT;
+    int w = bmp->width < DEFAULT_WIDTH ? bmp->width : DEFAULT_WIDTH;
+
+    for (int y = 0; y < h; y++)
+        memcpy(fb + y * DEFAULT_WIDTH, bmp->line[y], w);
+}
 
 viddriver_t sdlDriver =
 {
