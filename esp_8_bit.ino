@@ -17,6 +17,9 @@
 #include "esp_system.h"
 #include "esp_int_wdt.h"
 #include "esp_spiffs.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define PERF  // some stats about where we spend our time
 #include "src/emu.h"
@@ -62,6 +65,9 @@ uint32_t _frame_time = 0;
 uint32_t _drawn = 1;
 bool _inited = false;
 
+static TaskHandle_t g_emuTaskHandle = nullptr;
+#define NES_EMU_STACK_BYTES (20*1024) // real 20 KB
+
 void emu_init()
 {
     std::string folder = "/" + _emu->name;
@@ -80,6 +86,7 @@ void emu_loop()
     _frame_time = xthal_get_ccount() - t;
     _lines = _emu->video_buffer();
     _drawn++;
+    taskYIELD();
 }
 
 // dual core mode runs emulator on comms core
@@ -121,7 +128,7 @@ void setup()
   emu_init();
   video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump on app core
   #else
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
+  xTaskCreatePinnedToCore(emu_task, "emu_task", NES_EMU_STACK_BYTES, nullptr, 1, &g_emuTaskHandle, 0); // nofrendo needs ~20k byte stack, start on core 0
   #endif
 }
 
@@ -130,12 +137,19 @@ void perf()
 {
   static int _next = 0;
   if (_drawn >= _next) {
-    float elapsed_us = 120*1000000/(_emu->standard ? 60 : 50);
-    _next = _drawn + 120;
-    
+    int frames_per_sec = _emu->standard ? 60 : 50;
+    float elapsed_us = frames_per_sec * 1000000.0f / frames_per_sec; // 1 second
+    _next = _drawn + frames_per_sec;
+
     printf("frame_time:%d drawn:%d displayed:%d blit_ticks:%d->%d, isr time:%2.2f%%\n",
       _frame_time/240,_drawn,_frame_counter,_blit_ticks_min,_blit_ticks_max,(_isr_us*100)/elapsed_us);
-      
+
+    if (g_emuTaskHandle) {
+      UBaseType_t hw = uxTaskGetStackHighWaterMark(g_emuTaskHandle);
+      size_t hw_bytes = hw * sizeof(StackType_t);
+      ESP_LOGI("EMU", "emu_task stack min free: %u bytes", (unsigned)hw_bytes);
+    }
+
     _blit_ticks_min = 0xFFFFFFFF;
     _blit_ticks_max = 0;
     _isr_us = 0;
