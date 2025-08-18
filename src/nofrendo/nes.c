@@ -49,6 +49,9 @@
 #include "vid_drv.h"
 #include "nofrendo.h"
 
+/* Forward declaration from nes_ppu.c */
+void ppu_step_one_cpu_cycle(void);
+
 #define  NES_CLOCK_DIVIDER    12
 //#define  NES_MASTER_CLOCK     21477272.727272727272
 #define  NES_MASTER_CLOCK     (236250000 / 11)
@@ -334,6 +337,7 @@ void nes_nmi(void)
 void nes_setregion(bool is_pal)
 {
    nes.is_pal_region = is_pal;
+   ppu_set_region(is_pal);
 }
 
 void nes_togglepause(void)
@@ -344,6 +348,13 @@ void nes_togglepause(void)
 void nes_poweroff(void)
 {
    nes.poweroff = true;
+}
+
+/* Advance the PPU by the given number of CPU cycles */
+static void ppu_catchup(int cycles)
+{
+   for (int i = 0; i < cycles; ++i)
+      ppu_step_one_cpu_cycle();
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -366,6 +377,9 @@ void nes_renderframe(bool draw_flag)
       /* Execute CPU instruction */
       int cpu_cycles = nes6502_execute(1);
       nes.cpu_cycles_total += cpu_cycles;
+      /* Advance MMC3 M2 counter and PPU timing */
+      ppu_mmc3_m2_tick(cpu_cycles);
+      ppu_catchup(cpu_cycles);
 
       /* APU frame-IRQ advancement in CPU stepping path */
       nes_checkfiq(cpu_cycles);

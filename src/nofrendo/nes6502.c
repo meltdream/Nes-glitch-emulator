@@ -26,7 +26,6 @@
 
 #include "noftypes.h"
 #include "nes6502.h"
-#include "new_ppu.h"
 //#include "dis6502.h"
 uint8 ext_irq_line = 0;
 
@@ -34,17 +33,10 @@ uint8 ext_irq_line = 0;
 static nes6502_context cpu;
 static int remaining_cycles = 0; /* so we can release timeslice */
 
-/* Advance the CPU by n cycles while interleaving the PPU and mapper */
+/* Advance the CPU by n cycles (PPU stepped externally) */
 static inline void cpu_advance_cycles(int n) {
-    for (int i = 0; i < n; i++) {
-        /* mapper M2 tick per CPU cycle */
-        ppu_mmc3_m2_tick(1);
-        /* advance PPU during this CPU cycle */
-        ppu_step_one_cpu_cycle();
-        /* book-keeping */
-        remaining_cycles -= 1;
-        cpu.total_cycles += 1;
-    }
+    remaining_cycles -= n;
+    cpu.total_cycles += n;
 }
 
 //#define  NES6502_DISASM

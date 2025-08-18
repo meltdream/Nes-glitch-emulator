@@ -696,7 +696,13 @@ void ppu_setlatchfunc(ppulatchfunc_t fn)       { ppu_latchfunc   = fn; }
 void ppu_setvromswitch(ppuvromswitch_t fn)     { ppu_vromswitch  = fn; }
 void ppu_set_chrram(uint8_t *ptr, size_t size) { chrram_ptr = ptr; chrram_size = size; }
 
-bool ppu_frame_complete(void) 
+void ppu_set_region(bool is_pal)
+{
+    ppu_is_pal = is_pal;
+    ppu.is_pal_system = is_pal;
+}
+
+bool ppu_frame_complete(void)
 {
     if (ppu.frame_complete) {
         ppu.frame_complete = false;
