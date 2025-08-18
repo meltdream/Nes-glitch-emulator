@@ -90,6 +90,7 @@ void ppu_set_chrram(uint8_t *ptr, size_t size);/* Cartridge CHR RAM   */
 void ppu_reset(int hard);   /* hard ≠ 0 → power-on state */
 void ppu_clock(void);       /* advance one master PPU cycle */
 void ppu_mmc3_m2_tick(int cycles); /* advance M2-based low counter */
+void ppu_set_region(bool is_pal); /* select PAL or NTSC timing */
 bool ppu_frame_complete(void); /* true if frame just completed */
 
 /* ---- CPU ⇆ PPU bus ------------------------------------------------------ */
