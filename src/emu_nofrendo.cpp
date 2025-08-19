@@ -23,6 +23,8 @@ extern "C" {
 #include "nofrendo/event.h"
 };
 #include "math.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 using namespace std;
 
@@ -472,8 +474,12 @@ public:
         if (nes_sound_cb) {
             nes_sound_cb(b,n);  // 8 bit unsigned
             uint8_t* b8 = (uint8_t*)b;
-            for (int i = n-1; i >= 0; i--)
+            for (int i = n-1; i >= 0; i--) {
                 b[i] = (b8[i] ^ 0x80) << 8;  // turn it back into signed 16
+                // Occasionally yield to allow lower priority tasks and the idle task to run
+                if ((i & 2047) == 0)
+                    vTaskDelay(0);
+            }
         }
         else
             memset(b,0,2*n);
