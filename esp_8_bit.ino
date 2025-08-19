@@ -95,8 +95,11 @@ void emu_task(void* arg)
     printf("emu_task %s running on core %d at %dmhz\n",
       _emu->name.c_str(),xPortGetCoreID(),rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
     emu_init();
-    for (;;)
+    for (;;) {
       emu_loop();
+      // Give IDLE0 a chance to run so the task watchdog is satisfied
+      vTaskDelay(1);
+    }
 }
 
 esp_err_t mount_filesystem()
