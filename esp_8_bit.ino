@@ -85,6 +85,7 @@ void emu_loop()
     gui_update();
     _frame_time = xthal_get_ccount() - t;
     _lines = _emu->video_buffer();
+    __sync_synchronize();
     _drawn++;
     taskYIELD();
 }
@@ -170,6 +171,7 @@ void loop()
   #else
   // start the video after emu has started
   if (!_inited) {
+    __sync_synchronize();
     if (_lines) {
       printf("video_init\n");
       video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
