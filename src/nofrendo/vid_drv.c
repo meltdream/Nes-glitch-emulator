@@ -32,7 +32,7 @@
 #include "osd.h"
 #include <stdint.h>
 
-extern uint8_t **_lines;
+extern uint8_t** volatile _lines;
 
 /* hardware surface */
 static bitmap_t *screen = NULL;
