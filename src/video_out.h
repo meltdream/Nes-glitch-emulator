@@ -303,7 +303,7 @@ uint32_t us() {
 #define P2 (color)
 #define P3 (color << 8)
 
-volatile uint8_t** _lines; // filled in by emulator
+uint8_t** volatile _lines; // filled in by emulator
 volatile int _line_counter = 0;
 volatile int _frame_counter = 0;
 

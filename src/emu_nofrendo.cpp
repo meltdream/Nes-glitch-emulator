@@ -208,7 +208,7 @@ void osd_setsound(void (*playfunc)(void *buffer, int length))
 }
 
 std::string to_string(int i);
-extern uint8_t** _lines; // global video line pointers provided by PPU
+extern uint8_t** volatile _lines; // global video line pointers provided by PPU
 
 class EmuNofrendo : public Emu {
     uint8_t** lines_;

@@ -20,7 +20,7 @@
 #include "log.h"
 
 /* Video output globals populated during PPU reset */
-extern uint8_t **_lines;
+extern uint8_t** volatile _lines;
 extern int _active_lines;
 
 /* ─────────────────── Fast-code / inline helpers ─────────────────── */
