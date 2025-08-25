@@ -303,7 +303,7 @@ uint32_t us() {
 #define P2 (color)
 #define P3 (color << 8)
 
-uint8_t** _lines; // filled in by emulator
+volatile uint8_t** _lines; // filled in by emulator
 volatile int _line_counter = 0;
 volatile int _frame_counter = 0;
 
@@ -775,6 +775,7 @@ void IRAM_ATTR test_wave(volatile void* vbuf, int t = 1)
 #ifdef ESP_PLATFORM
 void video_sync()
 {
+  __sync_synchronize();
   if (!_lines)
     return;
   int n = 0;
@@ -793,6 +794,7 @@ void video_sync()
 extern "C"
 void IRAM_ATTR video_isr(volatile void* vbuf)
 {
+    __sync_synchronize();
     if (!_lines)
         return;
 
