@@ -19,6 +19,10 @@
 #include "nes_pal.h"        /* nes_palette / shady_palette            */
 #include "log.h"
 
+/* Video output globals populated during PPU reset */
+extern uint8_t **_lines;
+extern int _active_lines;
+
 /* ─────────────────── Fast-code / inline helpers ─────────────────── */
 #if defined(ESP_PLATFORM)
 #   define FAST_MEM __attribute__((section(".iram1")))
@@ -262,8 +266,8 @@ static struct {
     /* palette */
     uint8_t palette[32];
 
-    /* output fb */
-    uint8_t *fb;
+    /* output framebuffer */
+    bitmap_t *fb;
     uint8_t open_bus;
 } ppu;
 
@@ -716,6 +720,11 @@ void ppu_reset(int hard)
     (void)hard;
     memset(&ppu, 0, sizeof ppu);
     ppu.fb = vid_getbuffer();
+    if (ppu.fb) {
+        /* Expose framebuffer line pointers to video output */
+        _lines = ppu.fb->line;
+        _active_lines = ppu.fb->height; /* 240 lines for NTSC/PAL */
+    }
     ppu.status = rand() & 0xE0; /* bits 7-5 random on power-up */
     ppu.open_bus = 0;
     ppu.phase_mod3 = 0;
@@ -780,7 +789,7 @@ void ppu_clock(void)
         uint8_t spr_pal_row, spr_pri, spr_px; spr_px = sprite_pixel(&spr_pal_row, &spr_pri);
 
         if (draw_enabled) {
-            uint8_t *fbline = ppu.fb + (ppu.scanline * NES_SCREEN_WIDTH);
+            uint8_t *fbline = ppu.fb->line[ppu.scanline];
             uint8_t final_idx;
             if (!spr_px && !bg_px) {
                 final_idx = pal_read_raw(0);

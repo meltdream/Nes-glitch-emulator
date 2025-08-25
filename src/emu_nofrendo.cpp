@@ -208,12 +208,14 @@ void osd_setsound(void (*playfunc)(void *buffer, int length))
 }
 
 std::string to_string(int i);
+extern uint8_t** _lines; // global video line pointers provided by PPU
+
 class EmuNofrendo : public Emu {
-    uint8_t** _lines;
+    uint8_t** lines_;
 public:
     EmuNofrendo(int ntsc) : Emu("nofrendo",256,240,ntsc,(16 | (1 << 8)),4,EMU_NES)    // audio is 16bit, 3 or 6 cc width
     {
-        _lines = 0;
+        lines_ = 0;
         _ext = _nes_ext;
         _help = _nes_help;
         _audio_frequency = audio_frequency;
@@ -446,8 +448,9 @@ public:
             return -1;
         }
 
-        _lines = nes_emulate_frame(true);   // first frame!
-        if (!_lines) {
+        nes_emulate_frame(true);   // first frame to prime PPU
+        lines_ = _lines;
+        if (!lines_) {
             printf("nes_emulate_frame failed\n");
             unmap_file(_nofrendo_rom);
             _nofrendo_rom = 0;
@@ -458,14 +461,16 @@ public:
 
     virtual int update()
     {
-        if (_nofrendo_rom)
-            _lines = nes_emulate_frame(true);
+        if (_nofrendo_rom) {
+            nes_emulate_frame(true);
+            lines_ = _lines;
+        }
         return 0;
     }
 
     virtual uint8_t** video_buffer()
     {
-        return _lines;
+        return lines_;
     }
     
     virtual int audio_buffer(int16_t* b, int len)
