@@ -30,6 +30,9 @@
 #include "vid_drv.h"
 #include "gui.h"
 #include "osd.h"
+#include <stdint.h>
+
+extern uint8_t **_lines;
 
 /* hardware surface */
 static bitmap_t *screen = NULL;
@@ -368,7 +371,10 @@ void vid_flush(void)
 int vid_setmode(int width, int height)
 {
    if (NULL != primary_buffer)
+   {
       bmp_destroy(&primary_buffer);
+      _lines = NULL;
+   }
 //   if (NULL != back_buffer)
 //      bmp_destroy(&back_buffer);
 
@@ -382,6 +388,7 @@ int vid_setmode(int width, int height)
    if (NULL == back_buffer)
    {
       bmp_destroy(&primary_buffer);
+      _lines = NULL;
       return -1;
    }
    bmp_clear(back_buffer, GUI_BLACK);
@@ -441,7 +448,10 @@ void vid_shutdown(void)
       return;
 
    if (NULL != primary_buffer)
+   {
       bmp_destroy(&primary_buffer);
+      _lines = NULL;
+   }
 #if 0
    if (NULL != back_buffer)
       bmp_destroy(&back_buffer);
