@@ -382,6 +382,21 @@ int vid_setmode(int width, int height)
    if (NULL == primary_buffer)
       return -1;
 
+   /* Ensure bmp_create() returned a single contiguous block large enough for
+   ** a full 256x240 NES frame.  The core assumes each scanline advances by a
+   ** constant pitch within this block. */
+   {
+      size_t bufsize = (size_t) primary_buffer->pitch * primary_buffer->height;
+      uint8 *base = primary_buffer->line[0];
+      int y;
+
+      ASSERT(bufsize >= 240 * 256);
+      for (y = 1; y < primary_buffer->height; y++)
+      {
+         ASSERT(primary_buffer->line[y] == base + (primary_buffer->pitch * y));
+      }
+   }
+
    /* Create our backbuffer */
 #if 0
    back_buffer = bmp_create(width, height, 0); /* no overdraw */
